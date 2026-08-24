@@ -77,7 +77,7 @@ def resolve_proxy(explicit: str | None = None, *, disable: bool = False) -> str 
 
 def _proxy_from_yaml() -> str | None:
     try:
-        from gameaihack.paths import load_yaml
+        from gameaihack.core.paths import load_yaml
 
         data = load_yaml("pipeline.yaml") or {}
         val = (data.get("fetch") or {}).get("proxy")
@@ -171,7 +171,7 @@ def fetch_package(
     pkg = normalize_package(package)
     dest_dir = dest_dir.resolve()
     dest_dir.mkdir(parents=True, exist_ok=True)
-    from gameaihack.progress import log
+    from gameaihack.core.progress import log
 
     if not force:
         cached = find_cached(pkg, dest_dir)
@@ -283,7 +283,7 @@ def _fetch_gplaydl(pkg: str, dest_dir: Path, proxy: str | None = None) -> FetchR
         env["http_proxy"] = proxy
         env["HTTP_PROXY"] = proxy
         env["ALL_PROXY"] = proxy
-    from gameaihack.progress import log
+    from gameaihack.core.progress import log
 
     log("  gplaydl 正在下载（请稍候）…")
     proc = subprocess.run(
@@ -416,7 +416,7 @@ def _fetch_evozi(pkg: str, dest_dir: Path, timeout: int, proxy: str | None = Non
 
 
 def _download(url: str, dest: Path, timeout: int, proxy: str | None = None, label: str = "下载") -> None:
-    from gameaihack.progress import bar, bar_done
+    from gameaihack.core.progress import bar, bar_done
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")

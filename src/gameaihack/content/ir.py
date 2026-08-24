@@ -9,7 +9,7 @@ from jsonschema import Draft202012Validator
 from gameaihack import __version__
 from gameaihack.fingerprint import Fingerprint
 from gameaihack.ingest import PackageInfo
-from gameaihack.paths import load_yaml
+from gameaihack.core.paths import load_yaml
 
 SCHEMA_ID = "gameaihack.gameir.v1"
 

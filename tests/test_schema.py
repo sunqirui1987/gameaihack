@@ -1,6 +1,6 @@
 from gameaihack.ingest import PackageInfo
 from gameaihack.fingerprint import Fingerprint
-from gameaihack.ir import build_ir, validate_ir
+from gameaihack.content.ir import build_ir, validate_ir
 
 
 def test_phase0_ir_validates():

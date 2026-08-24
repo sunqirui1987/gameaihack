@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from gameaihack.fingerprint import Fingerprint, scan_paths
-from gameaihack.ingest import IngestError, has_remote_catalog, logical_paths
-from gameaihack.scoring import input_score, unity_data_present
+from gameaihack.fingerprint.scan import Fingerprint, scan_paths
+from gameaihack.ingest.unpack import IngestError, has_remote_catalog, logical_paths
+from gameaihack.fingerprint.score import input_score, unity_data_present
 
 
 @dataclass

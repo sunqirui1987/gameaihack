@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from gameaihack.layout import design_dir, extract_dir, ir_dir, unpack_dir
-from gameaihack.unity_index import _ascii_strings
+from gameaihack.core.layout import design_dir, extract_dir, ir_dir, unpack_dir
+from gameaihack.content.unity_index import _ascii_strings
 
 TEXT_EXT = {
     ".json",

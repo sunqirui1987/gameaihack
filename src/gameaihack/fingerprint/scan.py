@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
-from gameaihack.globmatch import match_glob
-from gameaihack.paths import load_yaml
+from gameaihack.core.globmatch import match_glob
+from gameaihack.core.paths import load_yaml
 
 
 @dataclass

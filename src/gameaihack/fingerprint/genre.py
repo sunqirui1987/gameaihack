@@ -30,15 +30,8 @@ def guess_genre(ir: dict) -> dict:
         scores["runner"] = 0.7
     if any(t.get("role") == "gacha" for t in tables):
         scores["gacha"] = 0.5
-    if (
-        "rovio" in pkg
-        or "slingshot" in names
-        or "redbird" in names
-        or "abba" in names
-        or any((lv.get("extra") or {}).get("chapter") for lv in levels)
-        or kinds.count("unity_addressables") >= 3
-    ):
-        scores["slingshot"] = 0.93
+    if "slingshot" in names or "弹弓" in names:
+        scores["slingshot"] = 0.85
     if not scores:
         engine = (ir.get("fingerprint") or {}).get("engine")
         return {"id": None, "confidence": 0, "engine": engine}

@@ -4,7 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from gameaihack.pngutil import write_rgba_png
+from gameaihack.art.png import write_rgba_png
 
 
 def write_zip(path: Path, files: dict[str, bytes]) -> Path:

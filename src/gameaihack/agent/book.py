@@ -6,10 +6,10 @@ import json
 import re
 from pathlib import Path
 
-from gameaihack.corpus import batch_text, index_markdown, iter_source_files
-from gameaihack.dsh_agent import run_dsh
-from gameaihack.layout import art_dir, design_dir, raw_dir
-from gameaihack.llm import LlmConfig, chat, resolve_llm
+from gameaihack.agent.corpus import batch_text, index_markdown, iter_source_files
+from gameaihack.agent.dsh import run_dsh
+from gameaihack.core.layout import art_dir, design_dir, raw_dir
+from gameaihack.agent.llm import LlmConfig, chat, resolve_llm
 
 SYSTEM = (
     "你是游戏策划。输入是从安装包解出来的原始文本。"
@@ -135,7 +135,7 @@ def run_dsh_book(job_dir: Path, ir: dict, cfg: LlmConfig) -> dict:
     """用 DSH 读 raw + 美术，写出全部策划。过程写到 策划/过程.md 和 raw/dsh.log。"""
     from datetime import datetime, timezone
 
-    from gameaihack.progress import log
+    from gameaihack.core.progress import log
 
     dest = design_dir(job_dir)
     dest.mkdir(parents=True, exist_ok=True)
@@ -200,7 +200,7 @@ def run_ai_analysis(job_dir: Path, ir: dict, *, cfg: LlmConfig | None = None) ->
     import os
 
     if cfg and not os.environ.get("PYTEST_CURRENT_TEST"):
-        from gameaihack.progress import log
+        from gameaihack.core.progress import log
 
         log(f"[dsh] 准备读 raw/ 和 output/美术/，索引文件 {len(files)} 个")
         dsh = run_dsh_book(job_dir, ir, cfg)
@@ -259,7 +259,7 @@ def _ensure_raw_agents(job_dir: Path) -> None:
 
 
 def _llm_pass(job_dir: Path, ir: dict, files: list[Path], cfg: LlmConfig) -> dict:
-    from gameaihack.progress import log
+    from gameaihack.core.progress import log
 
     pkg = (ir.get("package") or {}).get("name") or job_dir.name
     engine = (ir.get("fingerprint") or {}).get("engine") or "unknown"

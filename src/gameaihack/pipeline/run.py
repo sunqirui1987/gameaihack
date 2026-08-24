@@ -6,12 +6,12 @@ from pathlib import Path
 
 
 def _progress(msg: str) -> None:
-    from gameaihack.progress import log
+    from gameaihack.core.progress import log
 
     log(msg)
 
 from gameaihack import __version__
-from gameaihack.design import (
+from gameaihack.content.design import (
     collect_claims,
     mermaid_economy,
     mermaid_flow,
@@ -21,23 +21,24 @@ from gameaihack.design import (
 )
 from gameaihack.extract import run_extract
 from gameaihack.fingerprint import scan_paths
-from gameaihack.genre import guess_genre
+from gameaihack.fingerprint.genre import guess_genre
 from gameaihack.ingest import PackageInfo, has_remote_catalog, unpack_to, walk_files
-from gameaihack.inspect_cmd import inspect_input
-from gameaihack.ir import build_ir, validate_ir
-from gameaihack.job import Job, make_job_id, sha256_file, utc_now
-from gameaihack.layout import art_dir, extract_dir, ir_dir, unpack_dir
-from gameaihack.levels import rebuild_levels
-from gameaihack.paths import load_yaml
-from gameaihack.report import render_deliverable
-from gameaihack.runtime import run_runtime
-from gameaihack.scoring import input_score, unity_data_present
-from gameaihack.loc import extract_loc
-from gameaihack.refs import link_references
-from gameaihack.tables import discover_tables
-from gameaihack.verbs import extract_verbs
+from gameaihack.ingest.inspect import inspect_input
+from gameaihack.content.ir import build_ir, validate_ir
+from gameaihack.core.job import Job, make_job_id, sha256_file, utc_now
+from gameaihack.core.layout import art_dir, extract_dir, ir_dir, unpack_dir
+from gameaihack.pipeline.ports import STAGES as PORT_STAGES
+from gameaihack.content.levels import rebuild_levels
+from gameaihack.core.paths import load_yaml
+from gameaihack.publish.report import render_deliverable
+from gameaihack.content.runtime import run_runtime
+from gameaihack.fingerprint.score import input_score, unity_data_present
+from gameaihack.content.loc import extract_loc
+from gameaihack.content.refs import link_references
+from gameaihack.content.tables import discover_tables
+from gameaihack.content.verbs import extract_verbs
 
-STAGES = ["unpack", "fingerprint", "extract", "normalize", "levels", "design", "ai", "report"]
+STAGES = list(PORT_STAGES)
 
 
 def _should(stage: str, from_stage: str | None) -> bool:
@@ -347,7 +348,7 @@ def analyze(
 
     _progress("[7/8] 抽出游戏贴图，准备 output/ …")
     try:
-        from gameaihack.unity_art import ensure_game_art
+        from gameaihack.art.unity import ensure_game_art
 
         n_art = ensure_game_art(job.dir, progress=_progress)
         _progress(f"[7/8] 游戏贴图 {n_art} 张 → {art_dir(job.dir)}")
@@ -367,9 +368,9 @@ def analyze(
     dsh_ok = False
     _progress("[7/8] DSH 读 raw/ 与美术，写 output/策划 …")
     if _should("ai", from_stage):
-        from gameaihack.ai_analyze import run_ai_analysis
-        from gameaihack.dsh_agent import DshError, require_dsh
-        from gameaihack.llm import resolve_llm
+        from gameaihack.agent.book import run_ai_analysis
+        from gameaihack.agent.dsh import DshError, require_dsh
+        from gameaihack.agent.llm import resolve_llm
 
         if pytest_run:
             ai = run_ai_analysis(job.dir, ir, cfg=None)
@@ -394,7 +395,7 @@ def analyze(
 
     _progress("[8/8] 收口 output/ …")
     if _should("report", from_stage):
-        from gameaihack.projects import harvest_dsh
+        from gameaihack.publish.projects import harvest_dsh
 
         n_h = harvest_dsh(job.dir)
         if dsh_ok:

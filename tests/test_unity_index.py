@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from gameaihack.unity_index import index_unity_levels
+from gameaihack.content.unity_index import index_unity_levels
 
 
 def test_index_chapters_from_catalog(tmp_path: Path):

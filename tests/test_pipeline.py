@@ -4,7 +4,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from gameaihack.cli import app
-from gameaihack.ir import validate_ir
+from gameaihack.content.ir import validate_ir
 from tests.helpers import rich_game_files, write_zip
 
 runner = CliRunner()

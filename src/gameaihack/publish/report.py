@@ -8,11 +8,11 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from gameaihack import __version__
-from gameaihack.design import render_gdd_chapters
-from gameaihack.job import slugify
-from gameaihack.layout import extract_dir, raw_dir
-from gameaihack.paths import templates_dir
-from gameaihack.projects import write_ai_projects
+from gameaihack.content.design import render_gdd_chapters
+from gameaihack.core.job import slugify
+from gameaihack.core.layout import extract_dir, raw_dir
+from gameaihack.core.paths import templates_dir
+from gameaihack.publish.projects import write_ai_projects
 
 
 def _env() -> Environment:

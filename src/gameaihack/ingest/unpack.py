@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
-from gameaihack.globmatch import match_glob
+from gameaihack.core.globmatch import match_glob
 
 APK_SUFFIXES = {".apk"}
 CONTAINER_SUFFIXES = {".apk", ".xapk", ".apks", ".zip"}
@@ -155,13 +155,13 @@ def parse_apk_manifest(apk_path: Path) -> PackageInfo:
             )
     except Exception:
         pass
-    from gameaihack.axml import parse_manifest_apk
+    from gameaihack.core.axml import parse_manifest_apk
 
     return _pkg_from_dict(parse_manifest_apk(apk_path))
 
 
 def parse_manifest_blob(data: bytes) -> PackageInfo:
-    from gameaihack.axml import parse_manifest_bytes
+    from gameaihack.core.axml import parse_manifest_bytes
 
     return _pkg_from_dict(parse_manifest_bytes(data))
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from gameaihack.fingerprint import Fingerprint
-from gameaihack.globmatch import match_glob
+from gameaihack.fingerprint.scan import Fingerprint
+from gameaihack.core.globmatch import match_glob
 
 
 def unity_data_present(paths: list[str]) -> bool:

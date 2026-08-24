@@ -8,15 +8,15 @@ from typing import Optional
 import typer
 
 from gameaihack import __version__
-from gameaihack.analyze import analyze
+from gameaihack.pipeline.run import analyze
 from gameaihack.doctor import run_doctor
-from gameaihack.dsh_agent import DshError
-from gameaihack.fetch import FetchError, fetch_package, looks_like_package, resolve_proxy
+from gameaihack.agent.dsh import DshError
+from gameaihack.ingest.fetch import FetchError, fetch_package, looks_like_package, resolve_proxy
 from gameaihack.ingest import IngestError
-from gameaihack.inspect_cmd import inspect_input
-from gameaihack.ir import validate_ir
-from gameaihack.report import render_deliverable
-from gameaihack.share import ShareError, share_job
+from gameaihack.ingest.inspect import inspect_input
+from gameaihack.content.ir import validate_ir
+from gameaihack.publish.report import render_deliverable
+from gameaihack.publish.share import ShareError, share_job
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="APK 游戏解剖包")
 
@@ -73,7 +73,7 @@ def fetch_cmd(
     force_fetch: bool = typer.Option(False, "--force-fetch", help="忽略本地缓存，重新下载"),
 ) -> None:
     """按包名下载 APK。samples/ 里已有完整包则直接用。"""
-    from gameaihack.fetch import find_cached, normalize_package
+    from gameaihack.ingest.fetch import find_cached, normalize_package
 
     if not force_fetch:
         try:
@@ -151,7 +151,7 @@ def analyze_cmd(
     if not input_path.exists():
         if not looks_like_package(target):
             _die(f"找不到文件，也不是包名：{target}", EXIT_USAGE)
-        from gameaihack.fetch import find_cached, normalize_package
+        from gameaihack.ingest.fetch import find_cached, normalize_package
 
         try:
             cached = None if force_fetch else find_cached(normalize_package(target), fetch_dir)
@@ -202,7 +202,7 @@ def analyze_cmd(
 @app.command("report")
 def report_cmd(job_dir: Path = typer.Argument(..., exists=True, path_type=Path)) -> None:
     """按已有 IR 重出 HTML/封面。"""
-    from gameaihack.layout import ir_dir
+    from gameaihack.core.layout import ir_dir
 
     ir_path = ir_dir(job_dir) / "game.ir.json"
     if not ir_path.exists():

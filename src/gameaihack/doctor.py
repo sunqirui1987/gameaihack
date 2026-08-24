@@ -53,7 +53,7 @@ def run_doctor() -> tuple[list[Check], bool]:
         path = shutil.which(exe)
         checks.append(Check(exe, bool(path), req, path or why))
 
-    from gameaihack.dsh_agent import dsh_argv
+    from gameaihack.agent.dsh import dsh_argv
 
     dsh = dsh_argv()
     if dsh:
@@ -68,7 +68,7 @@ def run_doctor() -> tuple[list[Check], bool]:
             )
         )
 
-    from gameaihack.llm import resolve_llm
+    from gameaihack.agent.llm import resolve_llm
 
     llm = resolve_llm()
     if llm:

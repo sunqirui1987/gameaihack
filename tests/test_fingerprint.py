@@ -1,5 +1,5 @@
 from gameaihack.fingerprint import scan_paths
-from gameaihack.inspect_cmd import inspect_input
+from gameaihack.ingest.inspect import inspect_input
 
 
 def test_unity_il2cpp_with_data(unity_apk):

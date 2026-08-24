@@ -6,9 +6,9 @@ import time
 import zipfile
 from pathlib import Path
 
-from gameaihack.job import slugify
-from gameaihack.layout import ir_dir, output_dir
-from gameaihack.projects import PRODUCT_DIRS, PRODUCT_FILES
+from gameaihack.core.job import slugify
+from gameaihack.core.layout import ir_dir, output_dir
+from gameaihack.publish.projects import PRODUCT_DIRS, PRODUCT_FILES
 
 FORBIDDEN_SUFFIX = {
     ".apk",
@@ -110,7 +110,7 @@ def _collect_share_items(job_dir: Path) -> list[tuple[str, Path]]:
                 if f.is_file():
                     items.append((f"{name}/{f.relative_to(root).as_posix()}", f))
         return items
-    from gameaihack.layout import raw_dir
+    from gameaihack.core.layout import raw_dir
 
     deliverable = raw_dir(job_dir) / "deliverable"
     if deliverable.is_dir():

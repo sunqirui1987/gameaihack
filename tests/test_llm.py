@@ -1,10 +1,10 @@
 import json
 from pathlib import Path
 
-from gameaihack.ai_analyze import dsh_book_tasks, run_ai_analysis
-from gameaihack.corpus import iter_source_files
-from gameaihack.dsh_agent import DshError, _node_ok, dsh_argv, prepare_grok_home, require_dsh
-from gameaihack.llm import LlmConfig, llm_enabled, resolve_llm
+from gameaihack.agent.book import dsh_book_tasks, run_ai_analysis
+from gameaihack.agent.corpus import iter_source_files
+from gameaihack.agent.dsh import DshError, _node_ok, dsh_argv, prepare_grok_home, require_dsh
+from gameaihack.agent.llm import LlmConfig, llm_enabled, resolve_llm
 
 
 def test_resolve_llm_llm_bench_vars(monkeypatch):
@@ -69,7 +69,7 @@ def test_ai_analyze_mocked_chat(monkeypatch, tmp_path: Path):
         assert messages[0]["role"] == "system"
         return json.dumps(payload, ensure_ascii=False)
 
-    monkeypatch.setattr("gameaihack.ai_analyze.chat", fake_chat)
+    monkeypatch.setattr("gameaihack.agent.book.chat", fake_chat)
     cfg = LlmConfig(api_key="sk", base_url="http://127.0.0.1:9", model="dummy", source="t")
     ir = {"package": {"name": "com.example.puzzle"}, "claims": [], "unknowns": [], "genre_guess": {"id": "merge"}}
     result = run_ai_analysis(tmp_path, ir, cfg=cfg)
@@ -85,20 +85,22 @@ def test_dsh_book_tasks_read_raw_and_art(tmp_path: Path):
     (art / "redbird.png").write_bytes(b"x")
     ir = {"package": {"name": "com.example.puzzle"}, "levels": [{"extra": {"chapter": 1}}]}
     tasks = dsh_book_tasks(tmp_path, ir)
-    assert len(tasks) == 2
+    assert len(tasks) == 3
     titles = [t[0] for t in tasks]
     assert "全书策划" in titles
+    assert "美术图鉴" in titles
     assert "关卡策划" in titles
     blob = "\n".join(t[1] for t in tasks)
     assert "raw/" in blob
     assert "output/美术" in blob
     assert "output/策划" in blob
+    assert "图鉴" in blob
     assert "redbird.png" in blob
 
 
 def test_output_dir_harvests_dsh(tmp_path: Path):
-    from gameaihack.layout import output_dir
-    from gameaihack.projects import harvest_dsh
+    from gameaihack.core.layout import output_dir
+    from gameaihack.publish.projects import harvest_dsh
 
     game = tmp_path / "game" / "策划"
     game.mkdir(parents=True)
@@ -152,7 +154,7 @@ def test_prepare_grok_home(tmp_path: Path):
 
 def test_require_dsh_missing(monkeypatch):
     monkeypatch.delenv("GAMEAIHACK_DSH", raising=False)
-    monkeypatch.setattr("gameaihack.dsh_agent.dsh_argv", lambda: None)
+    monkeypatch.setattr("gameaihack.agent.dsh.dsh_argv", lambda: None)
     try:
         require_dsh()
     except DshError as e:

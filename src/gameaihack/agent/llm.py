@@ -15,7 +15,7 @@ def load_project_env() -> None:
     here = Path(__file__).resolve()
     candidates = [
         Path.cwd() / ".env",
-        here.parents[2] / ".env",
+        here.parents[3] / ".env",
     ]
     seen: set[Path] = set()
     for path in candidates:
@@ -115,7 +115,7 @@ def llm_enabled(cli_flag: bool | None = None) -> bool:
     if cli_flag is True:
         return resolve_llm() is not None
     try:
-        from gameaihack.paths import load_yaml
+        from gameaihack.core.paths import load_yaml
 
         data = load_yaml("pipeline.yaml") or {}
         if (data.get("design") or {}).get("llm_enabled") is False:

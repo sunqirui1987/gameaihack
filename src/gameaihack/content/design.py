@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from gameaihack.paths import load_yaml
+from gameaihack.core.paths import load_yaml
 
 AD_PAT = re.compile(
     r"ShowRewardVideo|RewardedAd|rewarded_video|UnityAds|AppLovin|IronSource|AdMob|激励视频",

@@ -13,7 +13,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from gameaihack.llm import LlmConfig
+from gameaihack.agent.llm import LlmConfig
 
 INSTALL = """DSH 是必须的（https://github.com/deepseek-ai/deepseek-harness）。
 
@@ -90,7 +90,7 @@ def _compatible_node_bin() -> Path | None:
 
 def _project_dsh() -> Path | None:
     here = Path(__file__).resolve()
-    roots = [here.parents[2], Path.cwd(), Path.home()]
+    roots = [here.parents[3], here.parents[1], Path.cwd(), Path.home()]
     for root in roots:
         for cand in (
             root / ".dsh" / "node_modules" / ".bin" / "dsh",
@@ -248,7 +248,7 @@ def run_dsh(
 ) -> dict:
     """cwd=job_dir，headless 跑完退出。过程实时打到 stderr、raw/dsh.log，并回调 on_line。"""
     import time
-    from gameaihack.progress import log
+    from gameaihack.core.progress import log
 
     argv = require_dsh()
     raw = job_dir / "raw"

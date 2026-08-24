@@ -9,8 +9,8 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from gameaihack.gamebook import write_gamebook
-from gameaihack.layout import (
+from gameaihack.publish.gamebook import write_gamebook
+from gameaihack.core.layout import (
     art_dir,
     design_dir,
     extract_dir,
@@ -21,8 +21,8 @@ from gameaihack.layout import (
     raw_dir,
     unpack_dir,
 )
-from gameaihack.paths import templates_dir
-from gameaihack.unity_art import rip_unity_art
+from gameaihack.core.paths import templates_dir
+from gameaihack.art.unity import rip_unity_art
 
 _SKIP_SUFFIX = {".apk", ".xapk", ".apks", ".aab", ".obb", ".so", ".dll", ".exe", ".dylib"}
 
@@ -57,7 +57,8 @@ def write_ai_projects(
     copied_art, copied_data = _copy_extracted(job_dir, art, game / "data")
     merged = unpack_dir(job_dir) / "merged"
     unity_ready = any(
-        any((art / b).rglob("*.png")) for b in ("角色", "服装", "头像", "界面", "礼包", "场景")
+        p.is_file() and p.suffix.lower() == ".png" and p.parent != art / "textures"
+        for p in art.rglob("*.png")
     )
     if merged.is_dir() and not unity_ready:
         rip_unity_art(merged, art)

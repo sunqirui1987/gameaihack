@@ -12,9 +12,9 @@ def configs_dir() -> Path:
             return p
     here = Path(__file__).resolve()
     candidates = [
-        here.parents[2] / "configs",
+        here.parents[3] / "configs",
         Path.cwd() / "configs",
-        here.parent / "data",
+        here.parents[1] / "data",
     ]
     for cand in candidates:
         if (cand / "fingerprint_rules.yaml").exists():
@@ -33,4 +33,4 @@ def load_yaml(name: str) -> dict:
 
 
 def templates_dir() -> Path:
-    return Path(__file__).resolve().parent / "templates"
+    return Path(__file__).resolve().parents[1] / "templates"

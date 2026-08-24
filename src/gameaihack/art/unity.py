@@ -30,30 +30,7 @@ BUCKET_RULES: list[tuple[re.Pattern[str], str]] = [
 ]
 
 PROP_THEME = re.compile(r"propbundle_([a-z0-9]+)", re.I)
-THEME_CN = {
-    "vanilla": "原版",
-    "winter": "冬日",
-    "valentine": "情人节",
-    "birthday": "生日",
-    "water": "水下",
-    "greenlantern": "绿灯侠",
-    "snottinghill": "鼻涕山",
-}
-
-CAPS = {
-    "服装": 4000,
-    "界面": 900,
-    "头像": 800,
-    "角色": 800,
-    "礼包": 600,
-    "奖励": 600,
-    "赛季": 400,
-    "公会": 400,
-    "头像框": 400,
-    "场景": 800,
-    "关卡": 200,
-    "其他": 400,
-}
+PACK_PREFIX = re.compile(r"(?i)^(assets/content/|assets/|packages/com\.[^/]+/)")
 
 
 def _py310() -> str | None:
@@ -70,7 +47,7 @@ def _py310() -> str | None:
 
 
 def ensure_game_art(job_dir: Path, *, progress=None) -> int:
-    from gameaihack.layout import art_dir, unpack_dir
+    from gameaihack.core.layout import art_dir, unpack_dir
 
     merged = unpack_dir(job_dir) / "merged"
     if not merged.is_dir():
@@ -114,12 +91,20 @@ def rip_unity_art(merged: Path, dest: Path, *, progress=None) -> int:
         return n
 
 
+def _per_bucket_cap() -> int:
+    import os
+
+    try:
+        return max(50, int(os.environ.get("GAMEAIHACK_ART_CAP", "8000")))
+    except ValueError:
+        return 8000
+
+
 def _bucket_for(src: Path) -> str:
     name = src.name
     m = PROP_THEME.search(name)
     if m:
-        theme = THEME_CN.get(m.group(1).lower(), m.group(1))
-        return f"场景/{theme}"
+        return f"场景/{_safe(m.group(1), 40)}"
     for pat, bucket in BUCKET_RULES:
         if pat.search(name):
             return bucket
@@ -184,28 +169,23 @@ def _safe(s: str, n: int = 80) -> str:
 
 def _out_from_container(dest: Path, bucket: str, container: str, fallback: str) -> Path:
     rel = container.replace("\\", "/")
-    low = rel.lower()
-    for prefix in (
-        "assets/content/",
-        "assets/",
-        "packages/com.rovio.abba.",
-        "packages/",
-    ):
-        if low.startswith(prefix):
-            rel = rel[len(prefix) :]
-            low = rel.lower()
+    while True:
+        m = PACK_PREFIX.match(rel)
+        if not m:
             break
+        rel = rel[m.end() :]
     parts = [p for p in rel.split("/") if p and p not in {".", ".."}]
     low_parts = [p.lower() for p in parts]
-    if bucket == "服装":
-        if "sets" in low_parts:
-            i = low_parts.index("sets")
-            parts = parts[i + 1 :]
+    if "sets" in low_parts:
+        i = low_parts.index("sets")
+        parts = parts[i + 1 :]
         if len(parts) >= 2 and parts[-2].lower() in {"final", "upgraded"}:
             parts = parts[:-2] + [parts[-1]]
-    elif bucket == "角色" and "mannequins" in low_parts:
-        i = low_parts.index("mannequins")
-        parts = parts[i + 1 :]
+    for skip in ("mannequins", "portraits", "sprites"):
+        if skip in low_parts:
+            i = low_parts.index(skip)
+            parts = parts[i + 1 :]
+            break
     if not parts:
         parts = [fallback]
     stem = Path(parts[-1]).stem
@@ -229,7 +209,7 @@ def _rip(merged: Path, dest: Path, progress=None) -> int:
     for src in files:
         bucket = _bucket_for(src)
         top = bucket.split("/", 1)[0]
-        cap = CAPS.get(top, CAPS["其他"])
+        cap = _per_bucket_cap()
         if counts.get(top, 0) >= cap:
             continue
         try:

@@ -1,4 +1,4 @@
-from gameaihack.axml import parse_manifest_bytes
+from gameaihack.core.axml import parse_manifest_bytes
 
 
 def test_text_manifest_package():

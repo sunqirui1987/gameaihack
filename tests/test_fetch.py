@@ -4,7 +4,7 @@ import urllib.error
 import zipfile
 from pathlib import Path
 
-from gameaihack.fetch import (
+from gameaihack.ingest.fetch import (
     FetchError,
     fetch_package,
     find_cached,
@@ -83,7 +83,7 @@ def test_fetch_fdroid_mocked(monkeypatch, tmp_path: Path):
             return Resp(blob, "application/vnd.android.package-archive")
         raise urllib.error.URLError("no")
 
-    monkeypatch.setattr("gameaihack.fetch.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("gameaihack.ingest.fetch.urllib.request.urlopen", fake_urlopen)
     result = fetch_package("com.example.puzzle", tmp_path, source="fdroid", no_proxy=True)
     assert result.source == "fdroid"
     assert result.path.exists()
@@ -106,7 +106,7 @@ def test_fetch_uses_cache_without_network(monkeypatch, tmp_path: Path):
     def boom(*_a, **_k):
         raise AssertionError("cache hit must not touch network")
 
-    monkeypatch.setattr("gameaihack.fetch.urllib.request.urlopen", boom)
+    monkeypatch.setattr("gameaihack.ingest.fetch.urllib.request.urlopen", boom)
     result = fetch_package(pkg, tmp_path, source="fdroid", no_proxy=True)
     assert result.source == "cache"
     assert result.path == tmp_path / f"{pkg}.xapk"
@@ -121,7 +121,7 @@ def test_force_fetch_skips_cache(monkeypatch, tmp_path: Path):
         calls["n"] += 1
         raise urllib.error.URLError("forced")
 
-    monkeypatch.setattr("gameaihack.fetch.urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setattr("gameaihack.ingest.fetch.urllib.request.urlopen", fake_urlopen)
     try:
         fetch_package(pkg, tmp_path, source="fdroid", no_proxy=True, force=True)
     except FetchError:

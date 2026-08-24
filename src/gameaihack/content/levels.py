@@ -5,8 +5,8 @@ import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from gameaihack.pngutil import render_board_png
-from gameaihack.unity_index import index_unity_levels
+from gameaihack.art.png import render_board_png
+from gameaihack.content.unity_index import index_unity_levels
 
 
 def rebuild_levels(

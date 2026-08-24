@@ -5,8 +5,8 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from gameaihack.cli import app
-from gameaihack.ir import validate_ir
-from gameaihack.share import is_forbidden
+from gameaihack.content.ir import validate_ir
+from gameaihack.publish.share import is_forbidden
 
 
 runner = CliRunner()
