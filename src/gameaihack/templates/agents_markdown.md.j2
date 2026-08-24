@@ -1,0 +1,52 @@
+# AGENTS.md — Markdown 工程
+
+这是对 `{{ package_name }}` 的**反编译解剖产物**（Markdown 工程），不是原厂源码，也不能编译出可安装包。
+
+给 AI / 程序 / 策划接着读、对照、按规格重做**独立作品**用。
+
+## 你要做什么
+
+1. 先读 [README.md](README.md) 和 [COVER.md](COVER.md)（30 秒结论）。
+2. 事实以 `data/game.ir.json` 和 `data/claims.json` 为准；`docs/gdd/` 是同一套主张的人读版。
+3. 关卡在 `data/levels/`，数值表在 `data/tables/`，循环图在 `diagrams/`。
+4. 图、音、配置在**兄弟工程** `../resources/`（见那边的 `AGENTS.md`）。
+5. 没有证据的系统写成「未知」，不要脑补。`confirmed` 主张必须能在 `claims.json` 找到 `evidence`。
+
+## 目录
+
+```
+markdown/
+  AGENTS.md              ← 你在这里
+  README.md              给人的导读
+  COVER.md               一页纸
+  docs/
+    architecture.md      引擎 / 包 / 品类 / 循环
+    gdd/                 策划全书（有证据才写）
+    systems/feel.md      手感 / Juice
+    levels/              关卡说明 + 画廊
+    unknown.md           还没还原的
+  data/                  机器可读，写代码时 ingest
+    game.ir.json         全量 GameIR（单一事实源）
+    claims.json
+    levels/
+    tables/
+  specs/                 给代码生成用的小规格
+    identity.json
+    loops.json
+    genre.json
+  diagrams/              mermaid
+```
+
+## 约束
+
+- 不要生成可运行的盗版客户端、外挂、破解器或重打包 APK。
+- 不要把 `../resources/` 里的原画当商用素材二次上架。
+- 引擎是 {{ engine }} / {{ script_backend }}，品类 {{ genre }}。重做时换你自己的引擎即可，规格在 `specs/` 和 `docs/gdd/`。
+- 关卡重建等级若是 L0：只有 ID/章节，没有几何。不要假装已经有完整关卡数据。
+
+## 建议工作流
+
+- 复刻玩法：`specs/identity.json` + `docs/gdd/01*` + `docs/gdd/02*` + `diagrams/loop-session.mmd`
+- 复刻数值：`data/tables/` + `docs/gdd/05*` + `docs/gdd/06*`
+- 复刻关卡：`data/levels/` + `docs/levels/`；缺几何就停，列未知项
+- 接资源：打开 `../resources/catalog.md`

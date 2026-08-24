@@ -1,0 +1,58 @@
+# {{ package_name }}
+
+工具 gameaihack {{ tool_version }} · `{{ job_id }}`
+
+{% if incomplete %}
+> 输入不完整（{{ input_score }}/100）。关卡/资源可能还在 OBB 或热更里。
+{% endif %}
+
+## 1. 这是什么
+
+{{ one_liner }}
+
+| | |
+|---|---|
+| 包名 | `{{ package_name }}` {{ version_name }} ({{ version_code }}) |
+| 引擎 | {{ engine }} / {{ script_backend }} |
+| 品类 | {{ genre }} |
+| 热更 | {{ hotupdate }} |
+| 资源 / 表 / 关卡 | {{ n_res }} / {{ n_tb }} / {{ n_lv }} |
+
+## 2. 地图与关卡
+
+{% if n_lv %}
+索引到 **{{ n_lv }}** 关{% if n_chapters %}（约 {{ n_chapters }} 章）{% endif %}，重建等级以 L0 为主：能列出 ID，**还没有关卡几何/猪窝布局**。
+
+样例：{{ level_sample }}
+
+完整清单： [data/levels/index.json](data/levels/index.json) · [策划/关卡/](策划/关卡/)
+{% else %}
+客户端没找到可索引的关卡文件。可能在服务端，或还在未解码的 Unity 包里。
+{% endif %}
+
+## 3. 资源
+
+抽出 {{ n_res }} 个文件（图/音/配置等）。美术：[美术/catalog.md](美术/catalog.md) · 预览 [html/index.html](html/index.html)
+
+## 4. 系统（有证据才写）
+
+- 局内循环：{{ (loops.session or [])|map(attribute='id')|join(' → ') or "未还原" }}
+- 广告 / IAP / 体力 等见 [策划/](策划/) · AI 读原始文件 [策划/ai/](策划/ai/)
+
+## 5. 雷达
+
+| 维 | 分 | 缺口 |
+|---|---|---|
+{% for r in radar -%}
+| {{ r.label }} | {{ r.score }}/{{ r.max }} | {{ (r.blockers or [])|join(", ") or "—" }} |
+{% endfor %}
+
+## 6. 还没还原 / 下一步
+
+{% if warnings %}
+{% for w in warnings -%}
+- `{{ w }}`
+{% endfor %}
+{% endif %}
+- 关卡布局：需要把 `chapters_*.bundle` / `data.unity3d` 用 UnityPy 解出 ScriptableObject（当前多半是 L0 索引）
+- 发给别人：`gameaihack share <job> --to autopsy.zip`

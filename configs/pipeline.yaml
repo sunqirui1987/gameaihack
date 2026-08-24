@@ -1,0 +1,60 @@
+# 管线开关。实现后由 CLI --config 读取。
+# 详见 docs/开发文档.md
+
+job:
+  keep_raw: true
+  mode: standard             # brief | standard | deep
+  resume_from: null          # unpack | fingerprint | extract | normalize | levels | design | report
+
+ingest:
+  use_apktool: true
+  apktool_skip_smali: true   # -s，需要 Java 逻辑时再关
+  merge_splits: true
+
+fingerprint:
+  ruleset: v1
+
+adapters:
+  unity: true
+  cocos: true
+  unreal: true
+  godot: true
+  native: true
+
+unity:
+  prefer: unitypy            # unitypy | assetripper
+  il2cpp_dummy: true
+  export_textures: true
+  export_audio: true
+  export_scenes: true
+
+runtime:
+  enabled: false             # 需显式打开 + device
+  device: null
+  dump_decrypt_only: true
+
+design:
+  llm_enabled: true
+  model: null                # 空则读环境变量
+  max_table_preview_rows: 20
+  require_evidence_for_claims: true
+
+report:
+  html: true
+  write_gdd: true
+  thumbs_only: true
+
+share:
+  exclude_apk: true
+  exclude_native_libs: true
+  exclude_secrets: true
+  thumbs_only: true
+
+simulate:
+  combat: true
+  economy_days: 7
+
+# 下载代理。也可 export https_proxy=... 或命令行 --proxy。
+# 设为空或 null 则直连。
+fetch:
+  proxy: "http://127.0.0.1:9090"

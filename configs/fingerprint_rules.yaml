@@ -1,0 +1,167 @@
+# 指纹规则。代码只读此文件。
+# match: glob_any = 任一 glob 命中（对 merged 相对路径，posix，大小写不敏感）
+#         glob_all = 全部命中
+# engine 可空（只打 tags）
+# priority 数字越大越优先（引擎裁决）
+
+priority:
+  unity: 100
+  cocos: 80
+  unreal: 70
+  godot: 60
+  flutter: 40
+  native: 10
+  unknown: 0
+
+rules:
+  - id: unity_il2cpp
+    engine: unity
+    script_backend: il2cpp
+    match: glob_any
+    patterns:
+      - "lib/*/libil2cpp.so"
+      - "**/global-metadata.dat"
+
+  - id: unity_mono
+    engine: unity
+    script_backend: mono
+    match: glob_any
+    patterns:
+      - "assets/bin/Data/Managed/Assembly-CSharp.dll"
+      - "**/Assembly-CSharp.dll"
+
+  - id: unity_data
+    engine: unity
+    match: glob_any
+    patterns:
+      - "assets/bin/Data/data.unity3d"
+      - "assets/bin/Data/resources.assets"
+      - "assets/bin/Data/sharedassets0.assets"
+      - "assets/bin/Data/level0"
+      - "assets/bin/Data/*.resS"
+
+  - id: unity_player
+    engine: unity
+    match: glob_any
+    patterns:
+      - "lib/*/libunity.so"
+      - "assets/bin/Data/boot.config"
+      - "assets/bin/Data/unity_app_guid"
+
+  - id: addressables
+    tags: ["hotupdate.addressables"]
+    match: glob_any
+    patterns:
+      - "**/catalog.json"
+      - "**/catalog.bin"
+      - "assets/aa/**"
+
+  - id: hybridclr
+    tags: ["hotupdate.hybridclr"]
+    match: glob_any
+    patterns:
+      - "**/*hybridclr*"
+      - "**/HotUpdate.dll.bytes"
+      - "**/hotupdate.dll.bytes"
+
+  - id: xlua
+    tags: ["hotupdate.xlua"]
+    match: glob_any
+    patterns:
+      - "lib/*/libxlua.so"
+      - "**/*.lua.bytes"
+
+  - id: unitycn
+    tags: ["protection.unitycn"]
+    match: glob_any
+    patterns:
+      - "**/UnityCN*"
+      - "**/*unitycn*"
+
+  - id: cocos_js
+    engine: cocos
+    script_backend: js
+    match: glob_any
+    patterns:
+      - "lib/*/libcocos2djs.so"
+      - "**/*.jsc"
+
+  - id: cocos_lua
+    engine: cocos
+    script_backend: lua
+    match: glob_any
+    patterns:
+      - "lib/*/libcocos2dlua.so"
+      - "**/*.luac"
+      - "**/*.luaj"
+
+  - id: cocos_generic
+    engine: cocos
+    match: glob_any
+    patterns:
+      - "lib/*/libcocos2d.so"
+      - "lib/*/libcocos2dcpp.so"
+      - "assets/src/main.js"
+      - "assets/src/settings.json"
+
+  - id: unreal
+    engine: unreal
+    match: glob_any
+    patterns:
+      - "lib/*/libUE4.so"
+      - "lib/*/libUnreal.so"
+      - "**/*.pak"
+      - "**/*.ucas"
+
+  - id: godot
+    engine: godot
+    match: glob_any
+    patterns:
+      - "lib/*/libgodot_android.so"
+      - "**/*.pck"
+
+  - id: flutter
+    engine: flutter
+    match: glob_any
+    patterns:
+      - "lib/*/libflutter.so"
+      - "assets/flutter_assets/**"
+
+  - id: libgdx
+    engine: native
+    match: glob_any
+    patterns:
+      - "lib/*/libgdx.so"
+      - "lib/*/libgdx-box2d.so"
+      - "**/libgdx.so"
+
+  - id: protect_legu
+    tags: ["protection.tencent_legu"]
+    match: glob_any
+    patterns:
+      - "lib/*/libshell*.so"
+      - "lib/*/libtup.so"
+      - "lib/*/libshella*.so"
+
+  - id: protect_bangcle
+    tags: ["protection.bangcle"]
+    match: glob_any
+    patterns:
+      - "lib/*/libsecexe.so"
+      - "lib/*/libsecmain.so"
+      - "lib/*/libDexHelper.so"
+
+  - id: protect_360
+    tags: ["protection.qihoo360"]
+    match: glob_any
+    patterns:
+      - "lib/*/libjiagu.so"
+      - "lib/*/libjiagu_sdk.so"
+      - "lib/*/libprotectt.so"
+
+  - id: protect_ijiami
+    tags: ["protection.ijiami"]
+    match: glob_any
+    patterns:
+      - "lib/*/libexec.so"
+      - "lib/*/libijm*.so"

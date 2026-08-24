@@ -1,0 +1,64 @@
+# 20 维雷达。id 写入 IR，label 用于封面。
+# Phase 0 只用 default_phase0_score；后续阶段按 scorers 实现。
+
+dimensions:
+  - id: identity
+    label: 身份证
+    default_phase0_score: 2   # 若包名未知则代码降为 1
+  - id: presentation
+    label: 表现语言
+    default_phase0_score: 0
+  - id: feel
+    label: 操作与手感
+    default_phase0_score: 0
+  - id: verbs
+    label: 玩家动词
+    default_phase0_score: 0
+  - id: content
+    label: 内容库
+    default_phase0_score: 0
+  - id: levels
+    label: 空间与关卡
+    default_phase0_score: 0
+  - id: rules
+    label: 胜负与规则
+    default_phase0_score: 0
+  - id: combat
+    label: 对局解析
+    default_phase0_score: 0
+  - id: progression
+    label: 成长
+    default_phase0_score: 0
+  - id: economy
+    label: 经济
+    default_phase0_score: 0
+  - id: monetization
+    label: 商业化
+    default_phase0_score: 0
+  - id: social
+    label: 社交
+    default_phase0_score: 0
+  - id: narrative
+    label: 叙事文案
+    default_phase0_score: 0
+  - id: ftue
+    label: 新手 FTUE
+    default_phase0_score: 0
+  - id: ux
+    label: 界面结构
+    default_phase0_score: 0
+  - id: liveops
+    label: 活动运营
+    default_phase0_score: 0
+  - id: network
+    label: 客户/服务端
+    default_phase0_score: 0
+  - id: juice
+    label: Juice
+    default_phase0_score: 0
+  - id: analytics
+    label: 埋点意图
+    default_phase0_score: 0
+  - id: tech
+    label: 技术骨架
+    default_phase0_score: 2   # engine=unknown 时降为 0
