@@ -9,6 +9,8 @@
   config:
     apiKeyEnv: DEEPSEEK_API_KEY
     streamIdleTimeoutMs: 172800000
+    thinking: enabled
+    reasoningEffort: max
     models:
       - id: !!js process.env.DSH_MODEL ?? 'grok-4.6'
         contextWindow: !!js Number(process.env.DSH_CONTEXT_WINDOW ?? 1000000)

@@ -220,25 +220,30 @@ def run_book(job_dir: Path, ir: dict, cfg: LlmConfig | None, *, via: str = "sdk"
     results: list[dict] = []
     all_ok = True
     effort = (os.environ.get("GAMEAIHACK_EFFORT") or "xhigh").strip() or "xhigh"
-    for i, (title, prompt) in enumerate(tasks, 1):
-        stream(f"\n{via}  {i}/{len(tasks)}  {title}")
-        req = AgentRequest(
-            job_dir=job_dir,
-            prompt=prompt,
-            model=(cfg.model if cfg else "") or os.environ.get("LLM_MODELS") or "grok-4.6",
-            timeout=int(os.environ.get("GAMEAIHACK_AGENT_TIMEOUT") or "3600"),
-            effort=effort,
-            api_key=cfg.api_key if cfg else "",
-            base_url=cfg.base_url if cfg else "",
-        )
-        step = _run_driver(driver, req, cfg=cfg)
-        results.append({"title": title, "ok": step.get("ok"), "error": step.get("error")})
-        if step.get("ok"):
-            stream(f"{via}  {title}  done")
-        else:
-            all_ok = False
-            log(f"[{via}] 失败：{step.get('error') or 'unknown'}")
-            break
+    try:
+        for i, (title, prompt) in enumerate(tasks, 1):
+            stream(f"\n{via}  {i}/{len(tasks)}  {title}")
+            req = AgentRequest(
+                job_dir=job_dir,
+                prompt=prompt,
+                model=(cfg.model if cfg else "") or os.environ.get("LLM_MODELS") or "grok-4.6",
+                timeout=int(os.environ.get("GAMEAIHACK_AGENT_TIMEOUT") or "3600"),
+                effort=effort,
+                api_key=cfg.api_key if cfg else "",
+                base_url=cfg.base_url if cfg else "",
+            )
+            step = _run_driver(driver, req, cfg=cfg)
+            results.append({"title": title, "ok": step.get("ok"), "error": step.get("error")})
+            if step.get("ok"):
+                stream(f"{via}  {title}  done")
+            else:
+                all_ok = False
+                log(f"[{via}] 失败：{step.get('error') or 'unknown'}")
+                break
+    finally:
+        closer = getattr(driver, "close", None)
+        if callable(closer):
+            closer()
     err = next((r.get("error") for r in results if not r.get("ok")), "")
     return {"ok": all_ok, "via": via, "error": err or "", "steps": results}
 
@@ -283,6 +288,9 @@ def run_ai_analysis(
         from gameaihack.core.progress import log
 
         log(f"[{via}] 准备读 raw/ 和 output/美术/，索引文件 {len(files)} 个")
+        from gameaihack.content.accept import accept_design, snapshot_protected
+
+        snap = snapshot_protected(job_dir)
         book = run_book(job_dir, ir, cfg, via=via)
         result["agent"] = {
             "ok": book.get("ok"),
@@ -290,6 +298,14 @@ def run_ai_analysis(
             "error": book.get("error"),
             "steps": book.get("steps"),
         }
+        if book.get("ok"):
+            gaps = accept_design(job_dir, snap)
+            if gaps:
+                err = "策划未达到交差线：\n" + "\n".join(f"- {x}" for x in gaps)
+                result["agent"]["ok"] = False
+                result["agent"]["error"] = err
+                book = result["agent"]
+                log(f"[{via}] {err}")
         result["dsh"] = result["agent"]
         if book.get("ok"):
             result["ok"] = True

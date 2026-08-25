@@ -157,6 +157,7 @@ def test_classify_buckets():
     assert classify("fx", "assets/vfx/hit.png", "hit") == "特效"
     assert classify("x", "t.png", "hero_n") == "技术贴图"
     assert classify("misc", "foo.png", "foo") == "其他"
+    assert classify("", "", "01_UI_HatShop_HatSetButton.png") == "界面"
 
 
 def test_art_manifest_lists(tmp_path: Path):
@@ -172,6 +173,13 @@ def test_art_manifest_lists(tmp_path: Path):
     assert (art / "清单" / "程序.md").is_file()
     assert (art / "清单" / "美术.md").is_file()
     assert (art / "清单" / "全部.csv").is_file()
+    write_rgba_png(art / "角色" / "01_UI_HatShop.png", 2, 2, bytes([0, 255, 0, 255] * 4))
+    write_rgba_png(art / "角色" / "RedBird.png", 64, 64, bytes([255, 0, 0, 255] * 4096))
+    write_manifest(art, {"package": {"name": "com.example.puzzle"}})
+    digest = (art / "清单" / "给策划.md").read_text(encoding="utf-8")
+    assert "RedBird.png" in digest
+    if "01_UI_HatShop.png" in digest:
+        assert digest.index("RedBird.png") < digest.index("01_UI_HatShop.png")
     assert (art / "清单" / "给策划.md").is_file()
     text = (art / "清单" / "总览.md").read_text(encoding="utf-8")
     assert "角色" in text

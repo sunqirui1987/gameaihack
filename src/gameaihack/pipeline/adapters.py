@@ -64,7 +64,7 @@ class DefaultArtRipper:
 
 
 class LlmDesignAgent:
-    """读 raw/ 和 output/美术/，写 output/策划/。通道 sdk / grok / codex / dsh。"""
+    """读 raw/ 和 output/美术/，写 output/策划/。默认 DeepSeek Harness SDK。"""
 
     def require(self, via: str = "sdk") -> Any:
         from gameaihack.agent.drivers import resolve_driver

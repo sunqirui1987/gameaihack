@@ -2,7 +2,7 @@
 
 复刻路径（主契约）：
 
-    包 → 解开 raw/ → 抽出 output/美术 → agent（grok/codex/dsh）读 raw+美术写出 output/策划
+    包 → 解开 raw/ → 抽出 output/美术 → agent（sdk / grok / codex / dsh）读 raw+美术写出 output/策划
         → 封口 复刻说明.md（策划与美术怎么对照着重做）
 """
 
@@ -142,13 +142,13 @@ class ArtRipper(Protocol):
 
 @runtime_checkable
 class DesignAgent(Protocol):
-    """读 raw + 美术，写 output/策划。通道 grok / codex / dsh。"""
+    """读 raw + 美术，写 output/策划。默认 DeepSeek Harness SDK。"""
 
-    def require(self) -> Any:
+    def require(self, via: str = "sdk") -> Any:
         """检查 agent / 模型密钥。没有就抛。"""
 
-    def analyze(self, job_dir: Path, ir: dict, cfg: Any | None = None) -> dict:
-        """跑 agent。返回 {dsh, llm, ok, files}。"""
+    def analyze(self, job_dir: Path, ir: dict, cfg: Any | None = None, via: str = "sdk") -> dict:
+        """跑 agent。返回 {agent, ok, files}。交差线：核心章 + 图鉴篇。"""
 
 
 @runtime_checkable

@@ -120,6 +120,40 @@ def _scan(art: Path) -> list[dict]:
     return rows
 
 
+_NOISE = (
+    "ui_",
+    "_ui",
+    "button",
+    "btn_",
+    "atlas",
+    "mask",
+    "mainbg",
+    "container",
+    "shop",
+    "hatset",
+    "glow",
+)
+
+
+def _sample_rows(items: list[dict], n: int = 5) -> list[dict]:
+    """给策划的代表图：少 UI/按钮/图集，优先中等尺寸单图。"""
+
+    def score(row: dict) -> float:
+        name = Path(row.get("path") or "").name.lower()
+        pts = 0.0
+        w, h = int(row.get("width") or 0), int(row.get("height") or 0)
+        if 48 <= w <= 1024 and 48 <= h <= 1024:
+            pts += 4
+        if w and h:
+            pts += min((w * h) / 80_000, 5)
+        for token in _NOISE:
+            if token in name:
+                pts -= 5
+        return pts
+
+    return sorted(items, key=lambda r: (-score(r), r.get("path") or ""))[:n]
+
+
 def _design_md(snap: dict, by: dict) -> str:
     pkg = snap.get("package") or ""
     lines = [
@@ -129,7 +163,7 @@ def _design_md(snap: dict, by: dict) -> str:
         "|---|---:|---|---|",
     ]
     for name, items in sorted(by.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-        samples = "、".join(f"`{x['path']}`" for x in items[:5])
+        samples = "、".join(f"`{x['path']}`" for x in _sample_rows(items, 5))
         lines.append(f"| `{name}/` | {len(items)} | {ROLE.get(name, '待归类')} | {samples} |")
     lines += [
         "\n图鉴必须一篇对应一个目录，文件名与目录名相同，例如 `策划/图鉴/角色.md`。\n",

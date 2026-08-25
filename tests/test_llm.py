@@ -42,49 +42,107 @@ def test_harness_injects_without_writing_key(tmp_path: Path, monkeypatch):
     assert "sk-test" not in ctext
 
 
-def test_sdk_tool_loop_writes_design(tmp_path: Path, monkeypatch):
+def test_sdk_uses_dsh_harness(tmp_path: Path):
+    from types import SimpleNamespace
+
     from gameaihack.agent.drivers.types import AgentRequest
     from gameaihack.agent.llm import LlmConfig
-    from gameaihack.agent.sdk import run_sdk
+    from gameaihack.agent.sdk import bundled_cordis, run_sdk
 
     dest = tmp_path / "output" / "策划"
     dest.mkdir(parents=True)
     (dest / "_事实源.md").write_text("# 事实\n", encoding="utf-8")
-    n = {"i": 0}
+    (dest / "02-核心玩法.md").write_text("# 玩法\n一局怎么打\n", encoding="utf-8")
+    seen: dict = {}
 
-    def fake_post(_cfg, payload, timeout):
-        n["i"] += 1
-        if n["i"] == 1:
-            return {
-                "choices": [
-                    {
-                        "message": {
-                            "tool_calls": [
-                                {
-                                    "id": "c1",
-                                    "function": {
-                                        "name": "write",
-                                        "arguments": json.dumps(
-                                            {
-                                                "path": "output/策划/02-核心玩法.md",
-                                                "content": "# 玩法\n一局怎么打\n",
-                                            },
-                                            ensure_ascii=False,
-                                        ),
-                                    },
-                                }
-                            ]
-                        }
-                    }
-                ]
-            }
-        return {"choices": [{"message": {"content": "写完了"}}]}
+    class FakeHarness:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
 
-    monkeypatch.setattr("gameaihack.agent.sdk._post", fake_post)
-    cfg = LlmConfig(api_key="k", base_url="http://127.0.0.1:9", model="m", source="t")
-    result = run_sdk(AgentRequest(job_dir=tmp_path, prompt="写策划"), cfg=cfg, via="codex")
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def run(self, prompt, session_id=None, on_notification=None):
+            seen["prompt"] = prompt
+            seen["session_id"] = session_id
+            if on_notification:
+                on_notification(
+                    SimpleNamespace(
+                        method="session.event",
+                        payload={
+                            "event": {
+                                "type": "assistant/message",
+                                "data": {"content": [{"type": "text", "text": "写完了"}]},
+                            }
+                        },
+                    )
+                )
+            return SimpleNamespace(
+                session_id=session_id,
+                final_response="写完了",
+                finish_reason="completed",
+                events=[],
+                notifications=[],
+                session_root=seen.get("session_root"),
+            )
+
+    cfg = LlmConfig(api_key="k", base_url="http://127.0.0.1:8080", model="grok-4.6", source="t")
+    result = run_sdk(
+        AgentRequest(job_dir=tmp_path, prompt="写策划"),
+        cfg=cfg,
+        via="sdk",
+        harness_cls=FakeHarness,
+    )
     assert result["ok"], result
-    assert "一局怎么打" in (dest / "02-核心玩法.md").read_text(encoding="utf-8")
+    assert result["text"] == "写完了"
+    assert seen["provider"] == "deepseek-official"
+    assert seen["model"] == "grok-4.6"
+    assert seen["cwd"] == str(tmp_path.resolve())
+    assert seen["api_key"] == "k"
+    assert seen["base_url"].endswith("/v1")
+    assert Path(seen["cordis"]) == bundled_cordis()
+    assert "写策划" in seen["prompt"]
+    assert (tmp_path / "raw" / "_dsh_home" / "sessions").is_dir()
+
+
+def test_sdk_driver_reuses_runtime(tmp_path: Path, monkeypatch):
+    from types import SimpleNamespace
+
+    from gameaihack.agent.drivers.types import AgentRequest
+    from gameaihack.agent.llm import LlmConfig
+    from gameaihack.agent.sdk import SdkDriver
+
+    dest = tmp_path / "output" / "策划"
+    dest.mkdir(parents=True)
+    (dest / "02-核心玩法.md").write_text("# 玩法\n", encoding="utf-8")
+    n = {"init": 0, "run": 0, "session": []}
+
+    class FakeHarness:
+        def __init__(self, **kwargs):
+            n["init"] += 1
+
+        def run(self, prompt, session_id=None, on_notification=None):
+            n["run"] += 1
+            n["session"].append(session_id)
+            return SimpleNamespace(final_response="ok", finish_reason="completed")
+
+        def close(self):
+            n["closed"] = True
+
+    monkeypatch.setattr("gameaihack.agent.sdk._import_harness", lambda: FakeHarness)
+    drv = SdkDriver()
+    cfg = LlmConfig(api_key="k", base_url="http://127.0.0.1:9", model="m", source="t")
+    a = drv.run(AgentRequest(job_dir=tmp_path, prompt="一"), cfg=cfg)
+    b = drv.run(AgentRequest(job_dir=tmp_path, prompt="二"), cfg=cfg)
+    assert a["ok"] and b["ok"]
+    assert n["init"] == 1
+    assert n["run"] == 2
+    assert n["session"][0] == n["session"][1]
+    drv.close()
+    assert n.get("closed") is True
 
 
 def test_fs_tools_refuse_raw_write(tmp_path: Path):
@@ -124,7 +182,6 @@ def test_agent_tools_list_glob_edit(tmp_path: Path):
 
 
 def test_two_modes_sdk_and_cli(monkeypatch):
-    monkeypatch.delenv("GAMEAIHACK_USE_CLI", raising=False)
     from gameaihack.agent.drivers import parse_via, resolve_driver
     from gameaihack.agent.drivers.grok import GrokDriver
     from gameaihack.agent.drivers.codex import CodexDriver
@@ -304,6 +361,33 @@ def test_parse_via_grok_codex_dsh():
     assert 'wire_api="chat"' in ijoin
     assert "OPENAI_API_KEY" in ijoin
     assert isinstance(resolve_driver("codex"), CodexDriver)
+
+
+def test_accept_design_requires_core_and_gallery(tmp_path: Path):
+    from gameaihack.content.accept import accept_design, snapshot_protected
+    from gameaihack.publish.kit import CORE_DESIGN
+
+    art = tmp_path / "output" / "美术" / "角色"
+    art.mkdir(parents=True)
+    (art / "a.png").write_bytes(b"x")
+    design = tmp_path / "output" / "策划"
+    design.mkdir(parents=True)
+    (design / "_事实源.md").write_text("# 事实\n", encoding="utf-8")
+    snap = snapshot_protected(tmp_path)
+    gaps = accept_design(tmp_path, snap)
+    assert any("02-核心玩法" in g for g in gaps)
+    assert any("图鉴/角色.md" in g for g in gaps)
+    pad = "这一段写给验收：一局怎么打、用哪张对照图、没证据标未知。\n" * 12
+    for name in CORE_DESIGN:
+        (design / name).write_text(f"# {name}\n{pad}", encoding="utf-8")
+    (design / "README.md").write_text("# 入口\n先读 02-核心玩法，再读制作顺序。\n" + pad, encoding="utf-8")
+    (design / "制作顺序.md").write_text("# 顺序\n1. 核心循环\n2. 关卡\n" + pad, encoding="utf-8")
+    gal = design / "图鉴"
+    gal.mkdir(parents=True)
+    (gal / "角色.md").write_text("# 角色\n对照 `角色/a.png`。用途：主界面立绘。\n" + pad, encoding="utf-8")
+    assert accept_design(tmp_path, snap) == []
+    (design / "_事实源.md").write_text("# 被改了\n", encoding="utf-8")
+    assert any("事实源" in g for g in accept_design(tmp_path, snap))
 
 
 def test_reset_output_keeps_art(tmp_path: Path):

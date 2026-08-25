@@ -26,7 +26,7 @@ manifest = ["pyaxmlparser>=0.3.31"]
 unity = ["UnityPy>=1.10", "Pillow>=10"]
 deep = ["frida-tools>=12"]
 fetch = ["gplaydl>=4"]
-dsh = ["deepseek-harness-sdk"]
+dsh = ["deepseek-harness-sdk>=0.1.1rc1"]
 
 [project.scripts]
 gameaihack = "gameaihack.cli:app"

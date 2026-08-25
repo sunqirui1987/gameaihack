@@ -1,201 +1,250 @@
-"""自建 agent：OpenAI 兼容 HTTP 工具循环。不调用 grok/codex CLI。"""
+"""自建 agent：官方 DeepSeek Harness Python SDK（JSON-RPC 子进程）。
+
+宿主把 LLM_* 映射成 DEEPSEEK_BASE_URL / DEEPSEEK_API_KEY，cwd 是 job。
+三次策划任务复用同一个 runtime 和同一条 session。
+文档：https://github.com/deepseek-ai/deepseek-harness/blob/master/python/sdk/README.zh.md
+"""
 
 from __future__ import annotations
 
-import json
-import urllib.error
-import urllib.request
+import os
+import time
+from pathlib import Path
 
-from gameaihack.agent.fs_tools import SCHEMAS, run_tool
-from gameaihack.agent.llm import LlmConfig, resolve_llm
-from gameaihack.agent.drivers.grok import EventGrouper
+from gameaihack.agent.dsh import PERSONA
 from gameaihack.agent.drivers.types import AgentError, AgentRequest
+from gameaihack.agent.llm import LlmConfig, resolve_llm
 from gameaihack.core.progress import stream
 
+INSTALL = (
+    "自建 agent 用 DeepSeek Harness Python SDK。\n"
+    "  pip install 'deepseek-harness-sdk'\n"
+    "会同时安装同版本 deepseek-harness-runtime-bin（macOS 14+ arm64 或 Linux）。\n"
+    "本机 grok/codex CLI 请用 --via grok 或 --via codex。"
+)
 
-def _post(cfg: LlmConfig, payload: dict, timeout: int) -> dict:
-    body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        cfg.chat_url,
-        data=body,
-        method="POST",
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {cfg.api_key}",
-            "Accept": "application/json",
-        },
+
+def bundled_cordis() -> Path:
+    path = Path(__file__).resolve().parents[1] / "data" / "dsh.cordis.yml"
+    if not path.is_file():
+        raise AgentError(f"找不到 DSH cordis：{path}")
+    return path
+
+
+def resolve_runtime_bin() -> str | None:
+    """捆绑 dsh-jsonrpc-agent。Rosetta x86_64 Python 仍可跑 arm64 二进制。"""
+    explicit = (os.environ.get("GAMEAIHACK_DSH_RUNTIME") or "").strip()
+    if explicit:
+        return explicit
+    try:
+        from deepseek_harness_runtime import bundled_runtime_path
+
+        return str(bundled_runtime_path())
+    except Exception:
+        pass
+    try:
+        import deepseek_harness_runtime
+
+        root = Path(deepseek_harness_runtime.__file__).resolve().parent / "runtime"
+    except Exception:
+        return None
+    names = (
+        "dsh-jsonrpc-agent-pkg-macos-arm64",
+        "dsh-jsonrpc-agent-pkg-linux-arm64",
+        "dsh-jsonrpc-agent-pkg-linux-x64",
+        "dsh-jsonrpc-agent-pkg-macos-x64",
     )
+    for name in names:
+        cand = root / name
+        if cand.is_file():
+            return str(cand)
+    return None
+
+
+def _import_harness():
     try:
-        with urllib.request.urlopen(req, timeout=max(timeout, 30)) as resp:
-            raw = resp.read().decode("utf-8", "replace")
-    except urllib.error.HTTPError as e:
-        err = e.read().decode("utf-8", "replace")[:800]
-        raise AgentError(f"LLM HTTP {e.code}: {err}") from e
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
-        raise AgentError(f"LLM 不可达 {cfg.chat_url}: {e}") from e
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise AgentError(f"LLM 不是 JSON：{raw[:300]}") from e
-    if data.get("error"):
-        raise AgentError(str(data.get("error"))[:400])
-    return data
+        from deepseek_harness import DeepSeekHarness
+    except ImportError as e:
+        raise AgentError(INSTALL) from e
+    return DeepSeekHarness
 
 
-def _message(choice: dict) -> dict:
-    msg = (choice or {}).get("message") or {}
-    return msg if isinstance(msg, dict) else {}
+def _payload(note) -> tuple[str, dict]:
+    if isinstance(note, dict):
+        method = str(note.get("method") or "")
+        payload = note.get("payload") if isinstance(note.get("payload"), dict) else {}
+        return method, payload
+    method = str(getattr(note, "method", "") or "")
+    raw = getattr(note, "payload", None)
+    payload = raw if isinstance(raw, dict) else {}
+    return method, payload
 
 
-def _tool_calls(msg: dict) -> list:
-    calls = msg.get("tool_calls") or msg.get("toolCalls") or []
-    return calls if isinstance(calls, list) else []
+def _emit_note(note, publish) -> None:
+    method, payload = _payload(note)
+    if method == "session.event":
+        ev = payload.get("event")
+        if isinstance(ev, dict):
+            from gameaihack.agent.dsh import _format_session_event
+
+            msg = _format_session_event(ev)
+            if msg:
+                publish(msg)
+        return
+    if method == "session.status":
+        status = str(payload.get("status") or "")
+        if status and status not in {"idle", "running"}:
+            publish(status)
 
 
-def _text(msg: dict) -> str:
-    c = msg.get("content") or msg.get("reasoning_content") or ""
-    if isinstance(c, list):
-        return "".join((p.get("text") or "") if isinstance(p, dict) else str(p) for p in c)
-    think = msg.get("reasoning_content") or msg.get("thinking") or ""
-    if think and not c:
-        return ""
-    return str(c or "")
+def _design_written(job: Path) -> bool:
+    dest = job / "output" / "策划"
+    if not dest.is_dir():
+        return False
+    for path in dest.rglob("*.md"):
+        rel = path.relative_to(dest).as_posix()
+        if path.name == "_事实源.md" or rel.startswith("ai/"):
+            continue
+        return True
+    return False
 
 
-def _think(msg: dict) -> str:
-    t = msg.get("reasoning_content") or msg.get("thinking") or ""
-    if isinstance(t, dict):
-        t = t.get("text") or ""
-    return str(t or "")
-
-
-def run_sdk(req: AgentRequest, *, cfg: LlmConfig | None = None, via: str = "sdk") -> dict:
-    cfg = cfg or resolve_llm()
-    if cfg is None or not cfg.api_key:
-        raise AgentError("请设 LLM_API_KEY、LLM_BASE_URL、LLM_MODELS（自定义网关即可，不需要 grok/codex CLI）。")
+def harness_kwargs(req: AgentRequest, cfg: LlmConfig) -> dict:
     model = (req.model or cfg.model or "").split(",", 1)[0].strip()
     job = req.job_dir.resolve()
-    def publish(msg: str) -> None:
-        stream(msg)
-        if req.on_line:
-            req.on_line(msg)
-
-    grouper = EventGrouper(publish)
-    sys = (
-        "你是 gameaihack 自建 agent，自带文件工具，不调用 grok/codex CLI。\n"
-        f"工作区：{job}\n"
-        "工具：read_file / write / search_replace / list_dir / tree / glob / grep。\n"
-        "先 list_dir . 和 read_file output/策划/_事实源.md、清单.md。\n"
-        "看美术用 list_dir output/美术（看文件夹计数）和 美术/清单/，不要枚举上万 png。\n"
-        "只能 write/search_replace output/策划/ 与 清单。不要改 raw/、_事实源.md。\n"
-        "用中文。没证据标未知。"
-    )
-    messages: list[dict] = [
-        {"role": "system", "content": sys},
-        {"role": "user", "content": req.prompt},
-    ]
-    payload_base = {
+    sessions = job / "raw" / "_dsh_home" / "sessions"
+    sessions.mkdir(parents=True, exist_ok=True)
+    kwargs = {
+        "provider": "deepseek-official",
         "model": model,
-        "tools": SCHEMAS,
-        "tool_choice": "auto",
-        "temperature": 0.2,
-        "reasoning_effort": req.effort or "xhigh",
+        "cwd": str(job),
+        "session_root": str(sessions.resolve()),
+        "cordis": str(bundled_cordis()),
+        "base_url": cfg.openai_base,
+        "api_key": cfg.api_key,
+        "env": {
+            "DSH_MODEL": model,
+            "DSH_SYSTEM_PROMPT": PERSONA,
+            "DSH_CONTEXT_WINDOW": "1000000",
+            "DSH_PERMISSION_MODE": "danger-full-access",
+            "DSH_TELEMETRY_MODE": "DISABLED",
+            "LLM_API_KEY": cfg.api_key,
+            "LLM_BASE_URL": cfg.base_url,
+            "LLM_MODELS": model,
+        },
+        "request_timeout_seconds": float(req.timeout or 3600),
     }
-    stream(f"{via}  {model}  {cfg.openai_base}")
-    n_write = 0
-    turns = max(8, min(int((req.timeout or 1800) / 20), 80))
+    runtime = resolve_runtime_bin()
+    if runtime:
+        kwargs["runtime_bin"] = runtime
+    return kwargs
+
+
+def _finish(result, job: Path, via: str) -> dict:
+    text = str(getattr(result, "final_response", "") or "")
+    reason = getattr(result, "finish_reason", None)
+    if reason == "error":
+        return {"ok": False, "via": via, "text": text, "error": text[-400:] or "dsh finish_reason=error"}
+    if not _design_written(job) and not text:
+        return {"ok": False, "via": via, "text": text, "error": "DSH 结束但没有写出策划文件"}
+    return {"ok": True, "via": via, "text": text, "error": "", "finish_reason": reason or ""}
+
+
+def _prompt_on(harness, req: AgentRequest, *, via: str, session_id: str) -> dict:
+    def publish(msg: str) -> None:
+        text = (msg or "").rstrip("\n")
+        if not text:
+            return
+        stream(text)
+        if req.on_line:
+            req.on_line(text)
+
+    result = harness.run(
+        req.prompt,
+        session_id=session_id,
+        on_notification=lambda n: _emit_note(n, publish),
+    )
+    return _finish(result, req.job_dir.resolve(), via)
+
+
+def run_sdk(
+    req: AgentRequest,
+    *,
+    cfg: LlmConfig | None = None,
+    via: str = "sdk",
+    harness_cls=None,
+) -> dict:
+    cfg = cfg or resolve_llm()
+    if cfg is None or not cfg.api_key:
+        raise AgentError("请设 LLM_API_KEY、LLM_BASE_URL、LLM_MODELS。自建 agent 会注入 DeepSeek Harness。")
+    model = (req.model or cfg.model or "").split(",", 1)[0].strip()
+    Harness = harness_cls or _import_harness()
+    stream(f"{via}  dsh  {model}  {cfg.openai_base}")
+    kwargs = harness_kwargs(req, cfg)
+    session_id = f"{req.job_dir.resolve().name}-{int(time.time())}"
     try:
-        for _ in range(turns):
-            try:
-                data = _post(cfg, {**payload_base, "messages": messages}, min(req.timeout, 180))
-            except AgentError as e:
-                if payload_base.get("reasoning_effort") and "400" in str(e):
-                    payload_base.pop("reasoning_effort", None)
-                    data = _post(cfg, {**payload_base, "messages": messages}, min(req.timeout, 180))
-                else:
-                    raise
-            choices = data.get("choices") or []
-            if not choices:
-                raise AgentError(f"LLM 无 choices：{str(data)[:300]}")
-            msg = _message(choices[0])
-            think = _think(msg)
-            if think:
-                grouper.feed(json.dumps({"type": "thought", "data": think[:4000]}, ensure_ascii=False))
-                grouper.flush_text()
-            calls = _tool_calls(msg)
-            content = _text(msg)
-            if calls:
-                messages.append(
-                    {
-                        "role": "assistant",
-                        "content": content or None,
-                        "tool_calls": calls,
-                    }
-                )
-                for call in calls:
-                    fn = call.get("function") or {}
-                    name = str(fn.get("name") or call.get("name") or "")
-                    raw_args = fn.get("arguments") or call.get("arguments") or "{}"
-                    if isinstance(raw_args, dict):
-                        args = raw_args
-                    else:
-                        try:
-                            args = json.loads(raw_args or "{}")
-                        except json.JSONDecodeError:
-                            args = {}
-                    path = str(args.get("path") or args.get("pattern") or "")
-                    grouper.feed(
-                        json.dumps(
-                            {
-                                "type": "tool_call",
-                                "toolName": name,
-                                "rawInput": {"path": path},
-                            },
-                            ensure_ascii=False,
-                        )
-                    )
-                    out = run_tool(job, name, args if isinstance(args, dict) else {})
-                    if name == "write":
-                        n_write += 1
-                    cid = call.get("id") or name
-                    messages.append({"role": "tool", "tool_call_id": cid, "name": name, "content": out[:24000]})
-                continue
-            if content:
-                grouper.feed(json.dumps({"type": "text", "data": content[:4000]}, ensure_ascii=False))
-            grouper.close()
-            if not n_write and content:
-                return {"ok": False, "via": via, "text": content, "error": "模型没有调用 write 写策划文件"}
-            return {"ok": True, "via": via, "text": content, "error": ""}
+        with Harness(**kwargs) as harness:
+            return _prompt_on(harness, req, via=via, session_id=session_id)
     except AgentError:
-        grouper.close()
         raise
-    grouper.close()
-    return {"ok": False, "via": via, "text": "", "error": f"超过 {turns} 轮仍未结束"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "via": via, "text": "", "error": f"{type(e).__name__}: {e}"}
 
 
 class SdkDriver:
-    """自建 HTTP 工具循环。"""
+    """DeepSeek Harness Python SDK。一次 analyze 复用同一个 runtime / session。"""
 
     kind = "sdk"
-    name = "自建 Agent"
-    endpoint = "chat/completions"
+    name = "DeepSeek Harness SDK"
+    endpoint = "dsh-jsonrpc-agent"
 
     def __init__(self, via: str = "sdk"):
         self.via = via or "sdk"
+        self._harness = None
+        self._session_id = ""
+        self._label = False
+
+    def close(self) -> None:
+        h = self._harness
+        self._harness = None
+        if h is None:
+            return
+        closer = getattr(h, "close", None)
+        if callable(closer):
+            try:
+                closer()
+            except Exception:
+                pass
 
     def require(self, cfg=None):
         cfg = cfg or resolve_llm()
         if cfg is None or not getattr(cfg, "api_key", None):
             raise AgentError(
                 "自建 agent（--via sdk）请设 LLM_API_KEY、LLM_BASE_URL、LLM_MODELS。"
-                "不需要 grok/codex CLI。本机 CLI 请用 --via grok 或 --via codex。"
+                "本机 grok/codex CLI 请用 --via grok 或 --via codex。"
             )
+        _import_harness()
+        bundled_cordis()
+        if resolve_runtime_bin() is None:
+            raise AgentError(INSTALL + "\n已能 import SDK，但找不到 dsh-jsonrpc-agent runtime。")
         return cfg
 
     def run(self, req: AgentRequest, *, cfg=None) -> dict:
         try:
-            return run_sdk(req, cfg=cfg or resolve_llm(), via=self.via)
+            cfg = cfg or resolve_llm()
+            if cfg is None or not cfg.api_key:
+                raise AgentError("请设 LLM_API_KEY、LLM_BASE_URL、LLM_MODELS。")
+            if not self._label:
+                stream(f"{self.via}  dsh  {cfg.model}  {cfg.openai_base}")
+                self._label = True
+            if self._harness is None:
+                Harness = _import_harness()
+                self._harness = Harness(**harness_kwargs(req, cfg))
+                self._session_id = f"{req.job_dir.resolve().name}-{int(time.time())}"
+            return _prompt_on(self._harness, req, via=self.via, session_id=self._session_id)
         except AgentError as e:
+            self.close()
             return {"ok": False, "via": self.via, "text": "", "error": str(e)}
         except Exception as e:  # noqa: BLE001
+            self.close()
             return {"ok": False, "via": self.via, "text": "", "error": f"{type(e).__name__}: {e}"}

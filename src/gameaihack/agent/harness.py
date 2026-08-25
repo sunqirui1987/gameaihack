@@ -1,8 +1,6 @@
-"""Cindy 式 CLI harness：宿主注入 model / baseUrl / key，隔离官方账号目录。
+"""本机 grok / Codex CLI 的环境注入：model / baseUrl / key，隔离官方账号目录。
 
-自建 agent 在 sdk.py。本模块只服务 --via grok|codex 这类本机 CLI：
-把 LLM_* 写进子进程环境，并给一份独立 GROK_HOME / CODEX_HOME，
-不读用户 ~/.grok、~/.codex 里的官方登录。
+自建 agent 走 DeepSeek Harness Python SDK（sdk.py），不走这里。
 """
 
 from __future__ import annotations
@@ -106,7 +104,7 @@ def inject_cli_env(
     grok_home: Path | None = None,
     codex_home: Path | None = None,
 ) -> dict[str, str]:
-    """把宿主的 model / baseUrl / key 注入 CLI 进程，对齐 Cindy getAuthEnv。"""
+    """把宿主的 model / baseUrl / key 注入 grok/codex 子进程。"""
     env_map = {k: v for k, v in os.environ.items() if isinstance(v, str)}
     env_map["LLM_API_KEY"] = cfg.api_key
     env_map["LLM_BASE_URL"] = cfg.base_url
@@ -129,7 +127,7 @@ def inject_cli_env(
 
 
 def codex_provider_argv(cfg: LlmConfig) -> list[str]:
-    """Cindy 式 -c model_provider：base_url + env_key，默认 chat 而不是 /responses。"""
+    """Codex -c model_provider：指向宿主网关，默认 chat 而不是 /responses。"""
     p = CODEX_PROVIDER
     base = cfg.openai_base
     wire = codex_wire_api()

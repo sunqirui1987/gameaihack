@@ -127,7 +127,7 @@ def analyze_cmd(
     via: Optional[str] = typer.Option(
         None,
         "--via",
-        help="sdk（默认，自建 agent）| grok | codex | dsh（本机 CLI，注入 LLM_*）",
+        help="sdk（默认，DSH Python harness）| grok | codex | dsh（本机 CLI）",
     ),
 ) -> None:
     """解开游戏包，抽出美术。Agent 读 raw/，把策划写到 output/。"""

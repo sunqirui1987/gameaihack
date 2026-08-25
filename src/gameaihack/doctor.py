@@ -66,8 +66,34 @@ def run_doctor() -> tuple[list[Check], bool]:
     checks.append(Check("codex-cli", bool(codex), False, codex or "可选 --via codex（本机 CLI）"))
     dsh = dsh_argv()
     checks.append(
-        Check("dsh", bool(dsh), False, " ".join(dsh) if dsh else "可选 --via dsh")
+        Check("dsh-cli", bool(dsh), False, " ".join(dsh) if dsh else "可选 --via dsh（npm CLI）")
     )
+    try:
+        import deepseek_harness  # noqa: F401
+
+        from gameaihack.agent.sdk import resolve_runtime_bin
+
+        runtime = resolve_runtime_bin()
+        if runtime:
+            checks.append(Check("dsh-sdk", True, True, f"DeepSeekHarness · {runtime}"))
+        else:
+            checks.append(
+                Check(
+                    "dsh-sdk",
+                    False,
+                    True,
+                    "SDK 已装，缺 runtime-bin（macOS 14+ arm64 wheel；Rosetta 见 README）",
+                )
+            )
+    except ImportError:
+        checks.append(
+            Check(
+                "dsh-sdk",
+                False,
+                True,
+                "pip install deepseek-harness-sdk（自建 agent 默认通道）",
+            )
+        )
 
     from gameaihack.agent.llm import resolve_llm
 
@@ -81,7 +107,7 @@ def run_doctor() -> tuple[list[Check], bool]:
                 "agent",
                 True,
                 True,
-                "两种模式：--via sdk 自建 agent（默认）；--via grok|codex|dsh 本机 CLI（注入 LLM_*）",
+                "默认 --via sdk = DeepSeek Harness SDK；--via grok|codex|dsh = 本机 CLI",
             )
         )
     else:

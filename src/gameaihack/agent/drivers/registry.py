@@ -1,7 +1,7 @@
 """解析 --via：两种一等模式。
 
-- sdk / agent：自建 HTTP agent（默认，不需要 grok/codex CLI）
-- grok / codex / dsh：本机 CLI，Cindy 式注入 LLM_* 到子进程
+- sdk / agent：自建 agent，官方 DeepSeek Harness Python SDK
+- grok / codex / dsh：本机 CLI（有 LLM_* 时注入网关，不绑官方账号）
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ VIA_ALIASES = {
     "sdk": "sdk",
     "agent": "sdk",
     "http": "sdk",
-    "cindy": "sdk",
     "harness": "sdk",
+    "dsh-sdk": "sdk",
     "grok": "grok",
     "grok-cli": "grok",
     "codex": "codex",
@@ -37,7 +37,9 @@ def default_via() -> str:
 def parse_via(value) -> str:
     text = str(value if value is not None else "sdk").strip().lower() or "sdk"
     if text not in VIA_ALIASES:
-        raise AgentError(f"未知 --via: {value}；可选 sdk（自建 agent）/ grok / codex / dsh（本机 CLI）")
+        raise AgentError(
+            f"未知 --via: {value}；可选 sdk（DSH Python harness）/ grok / codex / dsh（本机 CLI）"
+        )
     return VIA_ALIASES[text]
 
 

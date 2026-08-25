@@ -1,6 +1,6 @@
 """通过 `codex exec` 当 agent：cwd 是 job，基于 raw/ 读、往 output/策划 写。
 
-有 LLM_* 时按 Cindy harness 注入独立 CODEX_HOME + model_provider（默认 wire_api=chat，
+有 LLM_* 时注入独立 CODEX_HOME + model_provider（默认 wire_api=chat，
 不把网关模型塞进官方 /responses）。没有 LLM_* 时用本机 Codex 登录。
 """
 
