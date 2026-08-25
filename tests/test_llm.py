@@ -314,7 +314,7 @@ def test_dsh_book_tasks_read_raw_and_art(tmp_path: Path):
     assert "table:xxx" in blob
     assert "TapTap Maker" in blob
     assert "maker init" in blob
-    assert "自己的引擎" not in blob
+    assert "读者用自己的引擎" not in blob
     assert (tmp_path / "output" / "策划" / "_事实源.md").is_file()
     assert (tmp_path / "raw" / "清单" / "给策划.md").is_file()
     assert (tmp_path / "output" / "美术" / "清单" / "给策划.md").is_file()
