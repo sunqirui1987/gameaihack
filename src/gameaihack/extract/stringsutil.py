@@ -1,24 +1,37 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
+
+_PAT: dict[int, re.Pattern[bytes]] = {}
+
+
+def _ascii_re(min_len: int) -> re.Pattern[bytes]:
+    n = max(1, int(min_len))
+    pat = _PAT.get(n)
+    if pat is None:
+        pat = re.compile(rb"[\x20-\x7e]{" + str(n).encode("ascii") + rb",}")
+        _PAT[n] = pat
+    return pat
 
 
 def iter_ascii_strings(data: bytes, min_len: int = 4):
-    buf = bytearray()
-    for b in data:
-        if 32 <= b < 127:
-            buf.append(b)
-        else:
-            if len(buf) >= min_len:
-                yield buf.decode("ascii")
-            buf.clear()
-    if len(buf) >= min_len:
-        yield buf.decode("ascii")
+    """C-speed scan. Long runs are split so a key at offset 300 is not dropped."""
+    for m in _ascii_re(min_len).finditer(data):
+        s = m.group().decode("ascii")
+        if len(s) <= 256:
+            yield s
+            continue
+        for i in range(0, len(s), 256):
+            chunk = s[i : i + 256]
+            if len(chunk) >= min_len:
+                yield chunk
 
 
 def strings_from_file(path: Path, limit: int = 8 * 1024 * 1024, min_len: int = 4) -> list[str]:
     try:
-        data = path.read_bytes()[:limit]
+        with path.open("rb") as f:
+            data = f.read(limit)
     except OSError:
         return []
     return list(iter_ascii_strings(data, min_len))

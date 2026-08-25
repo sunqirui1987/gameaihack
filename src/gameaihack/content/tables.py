@@ -22,16 +22,21 @@ ROLE_HINTS: list[tuple[str, tuple[str, ...]]] = [
 
 
 def discover_tables(norm: Path, merged: Path, preview_rows: int = 20) -> list[dict]:
+    from gameaihack.core.fs import iter_files
+
+    table_suf = {".json", ".csv", ".txt", ".xml"}
     files: list[Path] = []
-    roots = []
-    if norm.exists() and any(norm.rglob("*.json")):
-        roots = [norm]
-    else:
-        roots = [p for p in (norm, merged) if p.exists()]
-    skip_suf = {".tmx", ".plist"}
-    for root in roots:
-        for suf in ("*.json", "*.csv", "*.txt", "*.xml"):
-            files.extend(p for p in root.rglob(suf) if p.suffix.lower() not in skip_suf)
+    if norm.exists():
+        norm_files = [p for p in iter_files(norm) if p.suffix.lower() in table_suf]
+        if any(p.suffix.lower() == ".json" for p in norm_files):
+            files = norm_files
+    if not files:
+        seen_p: set[Path] = set()
+        for root in (p for p in (norm, merged) if p.exists()):
+            for p in iter_files(root):
+                if p.suffix.lower() in table_suf and p not in seen_p:
+                    seen_p.add(p)
+                    files.append(p)
     tables = []
     seen: set[str] = set()
     idx = 0

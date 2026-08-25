@@ -3,12 +3,13 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
+from gameaihack.core.fs import iter_files
 from gameaihack.extract.base import KIND_DIR, ExtractItem, ExtractReport, sha256_path
 
 
 def extract_unreal(merged: Path, dest: Path) -> ExtractReport:
     report = ExtractReport(adapter="unreal")
-    paks = list(merged.rglob("*.pak")) + list(merged.rglob("*.ucas"))
+    paks = [p for p in iter_files(merged) if p.suffix.lower() in {".pak", ".ucas"}]
     report.discovered = len(paks)
     dest.mkdir(parents=True, exist_ok=True)
     listing = dest / "misc" / "unreal_paks.txt"
@@ -27,7 +28,7 @@ def extract_unreal(merged: Path, dest: Path) -> ExtractReport:
                 name=pak.name,
                 original_path=rel,
                 export_rel=listing.relative_to(dest).as_posix(),
-                sha256=sha256_path(pak),
+                sha256=sha256_path(pak, limit=8 * 1024 * 1024),
                 bytes=pak.stat().st_size,
                 extractor="unreal",
                 meta={"container": "pak"},
@@ -43,7 +44,7 @@ def extract_unreal(merged: Path, dest: Path) -> ExtractReport:
 def extract_godot(merged: Path, dest: Path) -> ExtractReport:
     report = ExtractReport(adapter="godot")
     dest.mkdir(parents=True, exist_ok=True)
-    pcks = list(merged.rglob("*.pck"))
+    pcks = [p for p in iter_files(merged) if p.suffix.lower() == ".pck"]
     report.discovered = len(pcks)
     for pck in pcks:
         rel = pak_rel = pck.relative_to(merged).as_posix()

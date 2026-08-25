@@ -63,12 +63,10 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def sha256_path(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def sha256_path(path: Path, limit: int | None = None) -> str:
+    from gameaihack.core.fs import sha256_path as _hash
+
+    return _hash(path, limit)
 
 
 def kind_from_suffix(name: str) -> str | None:

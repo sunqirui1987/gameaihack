@@ -187,10 +187,9 @@ def logical_paths(
     pkg = PackageInfo()
 
     if kind == "dir":
-        for p in input_path.rglob("*"):
-            if p.is_file():
-                rel = p.relative_to(input_path).as_posix()
-                paths.add(rel)
+        from gameaihack.core.fs import rel_files
+
+        paths.update(rel_files(input_path))
         meta = ContainerMeta(kind=kind, files=files_meta)
         return sorted(paths), meta, pkg
 
@@ -271,9 +270,9 @@ def logical_paths(
 
     if hotupdate and hotupdate.exists():
         files_meta.append({"kind": "hotupdate", "path": str(hotupdate), "bytes": 0})
-        for p in hotupdate.rglob("*"):
-            if p.is_file():
-                paths.add(p.relative_to(hotupdate).as_posix())
+        from gameaihack.core.fs import rel_files
+
+        paths.update(rel_files(hotupdate))
 
     if xman and pkg.name == "unknown.pack":
         pkg.name = xman.get("package_name") or pkg.name
@@ -365,13 +364,11 @@ def unpack_to(
     def overlay(src: Path) -> None:
         if not src.exists():
             return
-        for p in src.rglob("*"):
-            if not p.is_file():
-                continue
+        from gameaihack.core.fs import iter_files, link_or_copy
+
+        for p in iter_files(src):
             rel = p.relative_to(src)
-            target = merged / rel
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(p, target)
+            link_or_copy(p, merged / rel)
 
     for apk_root in apk_extract_order:
         overlay(apk_root)
@@ -384,13 +381,9 @@ def unpack_to(
 
 
 def walk_files(root: Path) -> list[str]:
-    if not root.exists():
-        return []
-    out = []
-    for p in root.rglob("*"):
-        if p.is_file():
-            out.append(p.relative_to(root).as_posix())
-    return sorted(out)
+    from gameaihack.core.fs import rel_files
+
+    return rel_files(root)
 
 
 def has_remote_catalog(paths: list[str], merged: Path | None = None) -> bool:

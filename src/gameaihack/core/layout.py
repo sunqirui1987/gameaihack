@@ -1,7 +1,7 @@
 """jobs/<包名>/raw 与 output/ 的路径约定。
 
-raw/     解包与中间产物，给 DSH 读，不外发。
-output/  最终成品：DSH 写的策划 + 抽出的美术。
+raw/     解包与中间产物，给模型读，不外发。
+output/  最终成品：策划 + 抽出的美术。
 """
 
 from __future__ import annotations
@@ -41,6 +41,30 @@ def migrate_game_to_output(job_dir: Path) -> Path:
             _merge_tree(game, out)
             shutil.rmtree(game, ignore_errors=True)
     out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def reset_output(job_dir: Path, *, keep: tuple[str, ...] = ("美术",)) -> Path:
+    """每次重跑清空 output/。默认只留已抽出的美术（重抽很慢）；策划/说明全部删掉。"""
+    out = output_dir(job_dir)
+    keep_set = set(keep)
+    if out.is_dir():
+        for item in list(out.iterdir()):
+            if item.name in keep_set:
+                continue
+            try:
+                if item.is_dir():
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
+            except OSError:
+                continue
+    out.mkdir(parents=True, exist_ok=True)
+    design = out / "策划"
+    if design.exists():
+        shutil.rmtree(design, ignore_errors=True)
+    design.mkdir(parents=True, exist_ok=True)
+    (out / "美术").mkdir(parents=True, exist_ok=True)
     return out
 
 

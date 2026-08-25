@@ -15,16 +15,20 @@ def extract_loc(norm: Path, merged: Path, tables: list[dict]) -> dict:
                         samples.append({"key": str(row.get("id") or k), "text": v[:80]})
                         if len(samples) >= 30:
                             break
+    from gameaihack.core.fs import iter_files
+
     for root in (norm, merged):
         if not root.exists():
             continue
-        for p in root.rglob("*"):
-            if not p.is_file():
+        for p in iter_files(root):
+            if p.suffix.lower() not in {".json", ".txt", ".xml"}:
                 continue
             name = p.name.lower()
-            if not any(x in name or x in p.as_posix().lower() for x in ("loc", "i18n", "lang", "string", "zh", "en")):
-                continue
-            if p.suffix.lower() not in {".json", ".txt", ".xml"}:
+            try:
+                rel = p.relative_to(root).as_posix().lower()
+            except ValueError:
+                rel = name
+            if not _looks_loc(name, rel):
                 continue
             try:
                 data = json.loads(p.read_text(encoding="utf-8", errors="ignore"))
@@ -37,12 +41,22 @@ def extract_loc(norm: Path, merged: Path, tables: list[dict]) -> dict:
                 samples.append({"key": k, "text": v[:80], "path": p.name})
             if "zh" in name:
                 languages.append("zh")
-            if "en" in name:
+            if name == "en.json" or name.startswith("en-") or name.startswith("en_"):
                 languages.append("en")
             if len(samples) >= 40:
                 break
     languages = sorted(set(languages)) or (["und"] if samples else [])
     return {"languages": languages, "samples": samples[:40]}
+
+
+def _looks_loc(name: str, rel: str) -> bool:
+    blob = f"{name} {rel}"
+    if any(x in blob for x in ("loc", "i18n", "lang", "string")):
+        return True
+    stem = Path(name).stem.lower()
+    if stem in {"zh", "en", "zh-cn", "zh_cn", "en-us", "en_us"} or stem.startswith(("zh-", "zh_", "en-", "en_")):
+        return True
+    return any(part in {"zh", "en", "i18n", "loc", "localization", "langs"} for part in rel.split("/"))
 
 
 def _flatten(data, prefix="") -> list[tuple[str, str]]:

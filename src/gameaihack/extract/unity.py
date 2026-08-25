@@ -1,40 +1,68 @@
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
 
-from gameaihack.extract.base import KIND_DIR, ExtractItem, ExtractReport, sha256_path
+from gameaihack.core.fs import find_named, iter_files
+from gameaihack.extract.base import KIND_DIR, ExtractItem, ExtractReport, sha256_bytes, sha256_path
 
 UNITY_GLOBS = [
     "assets/bin/Data",
     "assets/aa",
     "assets/AssetBundles",
 ]
+UNITY_SUF = {"", ".assets", ".resource", ".ress", ".bundle", ".unity3d", ".dat"}
+# 服装/头像等大 bundle 由 art ripper 抽图，这里不再 UnityPy.load。
+_ARTISH = re.compile(
+    r"(costume|avatar|mannequin|propbundle|frameatlas|_frames|offericon|seasonpass)",
+    re.I,
+)
+_SKIP_EXPORT = {"Texture2D", "Sprite"}
 
 
 def _unity_files(merged: Path) -> list[Path]:
     out: list[Path] = []
+    seen: set[Path] = set()
     for base in UNITY_GLOBS:
         p = merged.joinpath(*base.split("/"))
         if p.is_dir():
-            for f in p.rglob("*"):
-                if f.is_file() and f.suffix.lower() in {
-                    "",
-                    ".assets",
-                    ".resource",
-                    ".ress",
-                    ".bundle",
-                    ".unity3d",
-                    ".dat",
-                }:
+            for f in iter_files(p):
+                if f.suffix.lower() not in UNITY_SUF:
+                    continue
+                if _ARTISH.search(f.name):
+                    continue
+                try:
+                    if f.stat().st_size < 256:
+                        continue
+                except OSError:
+                    continue
+                if f not in seen:
+                    seen.add(f)
                     out.append(f)
-        elif p.is_file():
+        elif p.is_file() and p not in seen:
+            try:
+                if p.stat().st_size < 256:
+                    continue
+            except OSError:
+                continue
+            seen.add(p)
             out.append(p)
-    for f in merged.rglob("*"):
-        if f.suffix.lower() in {".bundle", ".unity3d", ".assets"}:
-            if f not in out:
-                out.append(f)
+    assets = merged / "assets"
+    if assets.is_dir():
+        for f in assets.iterdir():
+            if f.is_file() and f.suffix.lower() in {".bundle", ".unity3d", ".assets"}:
+                if _ARTISH.search(f.name):
+                    continue
+                try:
+                    if f.stat().st_size < 256:
+                        continue
+                except OSError:
+                    continue
+                if f not in seen:
+                    seen.add(f)
+                    out.append(f)
     return out
 
 
@@ -72,6 +100,8 @@ def extract_unity(merged: Path, dest: Path, *, max_files: int = 2500) -> Extract
                 tname = obj.type.name if hasattr(obj.type, "name") else str(obj.type)
             except Exception:
                 continue
+            if tname in _SKIP_EXPORT:
+                continue
             try:
                 item = _export_obj(obj, tname, dest, rel)
             except Exception:
@@ -96,11 +126,22 @@ def extract_unity(merged: Path, dest: Path, *, max_files: int = 2500) -> Extract
 
 def try_il2cpp_dumper(merged: Path, raw_dir: Path) -> str | None:
     """若 PATH 上有 Il2CppDumper，尝试产出 dummy dll。失败只记警告。"""
-    so = next(merged.rglob("libil2cpp.so"), None)
-    meta = next(merged.rglob("global-metadata.dat"), None)
+    found = find_named(
+        merged,
+        {"libil2cpp.so", "global-metadata.dat"},
+        hints=(
+            merged / "lib" / "arm64-v8a" / "libil2cpp.so",
+            merged / "lib" / "armeabi-v7a" / "libil2cpp.so",
+            merged / "assets" / "bin" / "Data" / "global-metadata.dat",
+        ),
+    )
+    so = found.get("libil2cpp.so")
+    meta = found.get("global-metadata.dat")
     if not so or not meta:
         return None
-    exe = shutil.which("Il2CppDumper") or shutil.which("il2cppdumper")
+    from gameaihack.core.fs import which_exe
+
+    exe = which_exe("Il2CppDumper", "il2cppdumper")
     if not exe:
         return "il2cppdumper_not_on_path"
     out = raw_dir / "il2cpp"
@@ -129,38 +170,18 @@ def try_asset_ripper(merged: Path, raw_dir: Path) -> str | None:
 
 
 def _export_obj(obj, tname: str, dest: Path, container: str) -> ExtractItem | None:
+    # Texture2D / Sprite 由 art ripper 抽，这里只取文本/音频/脚本。
     kind_map = {
-        "Texture2D": "texture",
-        "Sprite": "sprite",
         "AudioClip": "audio",
         "TextAsset": "config",
-        "Font": "font",
-        "Shader": "shader",
-        "AnimationClip": "anim",
-        "Mesh": "mesh",
         "MonoBehaviour": "config",
     }
     kind = kind_map.get(tname)
     if not kind:
         return None
     name = f"{tname}_{getattr(obj, 'path_id', 'x')}"
-    data = None
     meta: dict = {"unity_type": tname, "container": container}
     folder = KIND_DIR.get(kind, "misc")
-    suffix = ".bin"
-    raw: bytes | None = None
-
-    if tname in {"Texture2D", "Sprite"}:
-        data = obj.read()
-        name = getattr(data, "name", None) or name
-        img = getattr(data, "image", None)
-        if img is None:
-            return None
-        path = dest / folder / f"{_safe(name)}.png"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        img.save(path)
-        suffix = ".png"
-        return _item(kind, name, container, path, dest, "unitypy", meta)
 
     if tname == "AudioClip":
         data = obj.read()
@@ -173,18 +194,21 @@ def _export_obj(obj, tname: str, dest: Path, container: str) -> ExtractItem | No
         if not path.suffix:
             path = path.with_suffix(".wav")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(payload)
-        return _item("audio", aname, container, path, dest, "unitypy", meta)
+        raw = payload if isinstance(payload, (bytes, bytearray)) else bytes(payload)
+        path.write_bytes(raw)
+        return _item("audio", aname, container, path, dest, "unitypy", meta, sha=sha256_bytes(raw), nbytes=len(raw))
 
     if tname == "TextAsset":
         data = obj.read()
         name = getattr(data, "name", None) or name
         script = getattr(data, "script", None)
         raw = script.encode("utf-8", "replace") if isinstance(script, str) else (script or b"")
+        if not isinstance(raw, (bytes, bytearray)):
+            raw = bytes(raw)
         path = dest / folder / "textassets" / f"{_safe(name)}.txt"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(raw if isinstance(raw, (bytes, bytearray)) else bytes(raw))
-        return _item("config", name, container, path, dest, "unitypy", meta)
+        path.write_bytes(raw)
+        return _item("config", name, container, path, dest, "unitypy", meta, sha=sha256_bytes(raw), nbytes=len(raw))
 
     if tname == "MonoBehaviour":
         try:
@@ -209,14 +233,14 @@ def _safe(name: str) -> str:
     return keep or "unnamed"
 
 
-def _item(kind, name, original, path: Path, dest: Path, extractor, meta) -> ExtractItem:
+def _item(kind, name, original, path: Path, dest: Path, extractor, meta, *, sha: str | None = None, nbytes: int | None = None) -> ExtractItem:
     return ExtractItem(
         kind=kind,
         name=str(name),
         original_path=original,
         export_rel=path.relative_to(dest).as_posix(),
-        sha256=sha256_path(path),
-        bytes=path.stat().st_size,
+        sha256=sha or sha256_path(path),
+        bytes=nbytes if nbytes is not None else path.stat().st_size,
         extractor=extractor,
         meta=meta,
     )

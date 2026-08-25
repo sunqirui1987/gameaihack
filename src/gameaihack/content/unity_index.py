@@ -11,18 +11,9 @@ LEVEL_IN_CHAPTER_RE = re.compile(
 
 
 def _ascii_strings(data: bytes, min_len: int = 8) -> list[str]:
-    out: list[str] = []
-    buf = bytearray()
-    for b in data:
-        if 32 <= b < 127:
-            buf.append(b)
-        else:
-            if len(buf) >= min_len:
-                out.append(buf.decode("ascii"))
-            buf.clear()
-    if len(buf) >= min_len:
-        out.append(buf.decode("ascii"))
-    return out
+    from gameaihack.extract.stringsutil import iter_ascii_strings
+
+    return list(iter_ascii_strings(data, min_len))
 
 
 def index_unity_levels(merged: Path) -> list[dict]:
@@ -88,9 +79,9 @@ def index_unity_levels(merged: Path) -> list[dict]:
             )
     # bundle 文件名兜底
     if not levels:
-        for p in merged.rglob("*"):
-            if not p.is_file():
-                continue
+        from gameaihack.core.fs import iter_files
+
+        for p in iter_files(merged):
             name = p.name.lower()
             if any(k in name for k in ("chapter", "level", "episode", "saga")) and name.endswith(
                 (".bundle", ".unity3d", ".assets")

@@ -63,25 +63,24 @@ class DefaultArtRipper:
         return ensure_game_art(job_dir, progress=progress)
 
 
-class DshDesignAgent:
-    """DSH：读 raw/ 和 output/美术/，写 output/策划/。"""
+class LlmDesignAgent:
+    """读 raw/ 和 output/美术/，写 output/策划/。通道 grok / codex / dsh。"""
 
-    def require(self) -> Any:
-        from gameaihack.agent.dsh import DshError, require_dsh
+    def require(self, via: str = "grok") -> Any:
+        from gameaihack.agent.drivers import resolve_driver
         from gameaihack.agent.llm import resolve_llm
 
-        require_dsh()
         cfg = resolve_llm()
-        if not cfg:
-            raise DshError(
-                "DSH 需要模型密钥。请设 LLM_API_KEY、LLM_BASE_URL、LLM_MODELS（与 llm_bench 相同）。"
-            )
+        resolve_driver(via).require(cfg)
         return cfg
 
-    def analyze(self, job_dir: Path, ir: dict, cfg: Any | None = None) -> dict:
+    def analyze(self, job_dir: Path, ir: dict, cfg: Any | None = None, via: str = "grok") -> dict:
         from gameaihack.agent.book import run_ai_analysis
 
-        return run_ai_analysis(job_dir, ir, cfg=cfg)
+        return run_ai_analysis(job_dir, ir, cfg=cfg, via=via)
+
+
+DshDesignAgent = LlmDesignAgent
 
 
 class DefaultPublisher:
@@ -94,3 +93,22 @@ class DefaultPublisher:
         from gameaihack.publish.projects import harvest_dsh
 
         return harvest_dsh(job_dir)
+
+    def seal(self, job_dir: Path, ir: dict) -> dict:
+        from gameaihack.publish.kit import seal_kit
+
+        return seal_kit(job_dir, ir)
+
+
+def default_ports() -> dict:
+    """编排只拿这一套端口。换实现：子类或换这里的实例。"""
+    return {
+        "unpacker": DefaultUnpacker(),
+        "fingerprinter": DefaultFingerprinter(),
+        "extractor": DefaultExtractor(),
+        "tables": DefaultTableNormalizer(),
+        "levels": DefaultLevelIndexer(),
+        "art": DefaultArtRipper(),
+        "agent": LlmDesignAgent(),
+        "publisher": DefaultPublisher(),
+    }

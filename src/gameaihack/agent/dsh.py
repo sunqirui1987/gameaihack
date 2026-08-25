@@ -13,6 +13,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from gameaihack.agent.drivers.types import AgentError
 from gameaihack.agent.llm import LlmConfig
 
 INSTALL = """DSH 是必须的（https://github.com/deepseek-ai/deepseek-harness）。
@@ -32,7 +33,7 @@ INSTALL = """DSH 是必须的（https://github.com/deepseek-ai/deepseek-harness�
 """
 
 
-class DshError(Exception):
+class DshError(AgentError):
     pass
 
 
@@ -132,16 +133,11 @@ def dsh_available() -> str | None:
 
 
 PERSONA = (
-    "你是游戏策划 agent。目标：让别人只靠 output/策划/ 和 output/美术/，"
-    "用自己的引擎重做一版玩法相同、画面可对照的游戏。"
-    "先理解 raw/（解包数据）和 output/美术/（抽出的 PNG），再写出完整中文策划。"
-    "只读 raw/ 与 output/美术/。不要读 apk/so/dex。"
-    "把完整策划写进 output/策划/。必须把美术嵌进文档：角色、服装、界面、场景、礼包都要有图鉴。"
-    "每读一个文件、每写一个文件，先用一句话说明你在做什么。"
-    "写给人看的正式 GDD：玩家怎么玩、关卡怎么排、经济怎么转、大厅有哪些模式、每张图用在哪。"
-    "用 markdown 图片引用美术，例如 ![](../美术/角色/redbird.png)。"
-    "禁止写 Unity 类名、程序集名、「来源：」清单。不要编造每关猪的坐标。"
-    "不要往 output/美术/ 复制二进制。不要写盗版客户端或重打包 APK。"
+    "先读 output/策划/_事实源.md，那是 raw 清单和美术清单合成的事实源。"
+    "策划只准写事实源里有的系统、表、关卡、美术目录。"
+    "图鉴文件名必须等于美术清单文件夹；嵌图必须是清单里的 path。"
+    "写可开工的制作说明书：整局过程、02 能做第一局、制作顺序.md。"
+    "没证据标未知。不要发明目录、不要编造坐标、不要写盗版客户端。"
 )
 
 
@@ -246,21 +242,26 @@ def run_dsh(
     timeout: int = 1800,
     on_line=None,
 ) -> dict:
-    """cwd=job_dir，headless 跑完退出。过程实时打到 stderr、raw/dsh.log，并回调 on_line。"""
+    """cwd=job_dir（可见 raw/ 与 output/），headless 跑完退出。"""
     import time
+    from gameaihack.core.layout import raw_dir
     from gameaihack.core.progress import log
 
     argv = require_dsh()
-    raw = job_dir / "raw"
-    dsh_home = (raw / "_dsh_home").resolve() if raw.exists() else (job_dir / "_dsh_home").resolve()
+    cwd = job_dir.resolve()
+    raw = raw_dir(job_dir)
+    if not raw.is_dir():
+        raw = job_dir / "raw"
+        raw.mkdir(parents=True, exist_ok=True)
+    dsh_home = (raw / "_dsh_home").resolve()
     sessions = dsh_home / "sessions"
     sessions.mkdir(parents=True, exist_ok=True)
     patch = prepare_grok_home(dsh_home, cfg, sessions=sessions)
-    env = _export_llm_env(cfg, job_dir, sessions, dsh_home)
+    env = _export_llm_env(cfg, cwd, sessions, dsh_home)
     env["PYTHONUNBUFFERED"] = "1"
     cmd = [*argv, "--profile", "headless", "--patch", str(patch), prompt]
     via = "npx" if cmd[0].endswith("npx") or "npx" in Path(cmd[0]).name else "cli"
-    log_path = (raw if raw.exists() else job_dir) / "dsh.log"
+    log_path = raw / "dsh.log"
     t0 = time.time()
 
     def emit(msg: str) -> None:
@@ -277,14 +278,14 @@ def run_dsh(
                 pass
 
     emit(f"[dsh] 开始  model={cfg.model}  provider=grok  url={cfg.openai_base}")
-    emit(f"[dsh] 工作区 {job_dir}")
+    emit(f"[dsh] 工作区 {cwd}  （读 raw/，写 output/）")
     emit(f"[dsh] 日志    {log_path}")
     emit(f"[dsh] 命令    {' '.join(cmd[:6])} …")
     stdout_chunks: list[str] = []
     try:
         proc = subprocess.Popen(
             cmd,
-            cwd=str(job_dir),
+            cwd=str(cwd),
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

@@ -5,12 +5,18 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+try:
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
 import typer
 
 from gameaihack import __version__
 from gameaihack.pipeline.run import analyze
 from gameaihack.doctor import run_doctor
 from gameaihack.agent.dsh import DshError
+from gameaihack.agent.drivers import AgentError
 from gameaihack.ingest.fetch import FetchError, fetch_package, looks_like_package, resolve_proxy
 from gameaihack.ingest import IngestError
 from gameaihack.ingest.inspect import inspect_input
@@ -18,7 +24,7 @@ from gameaihack.content.ir import validate_ir
 from gameaihack.publish.report import render_deliverable
 from gameaihack.publish.share import ShareError, share_job
 
-app = typer.Typer(add_completion=False, no_args_is_help=True, help="APK 游戏解剖包")
+app = typer.Typer(add_completion=False, no_args_is_help=True, help="游戏复刻材料包：抽出美术，agent 写策划")
 
 EXIT_USAGE = 2
 EXIT_INGEST = 3
@@ -118,8 +124,9 @@ def analyze_cmd(
     proxy: Optional[str] = typer.Option(None, "--proxy", help="下载代理（覆盖环境变量和 pipeline.yaml）"),
     no_proxy: bool = typer.Option(False, "--no-proxy"),
     force_fetch: bool = typer.Option(False, "--force-fetch", help="忽略本地缓存，重新下载"),
+    via: Optional[str] = typer.Option(None, "--via", help="agent 通道：grok | codex | dsh（默认 grok，或 GAMEAIHACK_VIA）"),
 ) -> None:
-    """解包到 raw/，必须用 DSH 读 raw 写出 output/（策划稿+美术）。"""
+    """解开游戏包，抽出美术。Agent 读 raw/，把策划写到 output/。"""
     if mode not in {"brief", "standard", "deep"}:
         _die("--mode 必须是 brief|standard|deep", EXIT_USAGE)
     if from_stage and from_stage not in {
@@ -184,18 +191,19 @@ def analyze_cmd(
             device=device,
             from_stage=from_stage,
             resume=resume,
+            via=via,
         )
     except IngestError as e:
         _die(str(e), EXIT_INGEST)
-    except DshError as e:
+    except (AgentError, DshError) as e:
         _die(str(e), EXIT_DOCTOR)
     except ValueError as e:
         _die(str(e), EXIT_SCHEMA)
-    typer.echo(f"完成：{job_dir}")
-    typer.echo(f"  raw：   {job_dir / 'raw'}")
-    typer.echo(f"  output：{job_dir / 'output'}")
-    typer.echo(f"  策划：  {job_dir / 'output' / '策划'}")
-    typer.echo(f"  美术：  {job_dir / 'output' / '美术'}")
+    typer.echo(f"复刻包：{job_dir / 'output'}")
+    typer.echo(f"  说明：{job_dir / 'output' / '复刻说明.md'}")
+    typer.echo(f"  策划：{job_dir / 'output' / '策划'}")
+    typer.echo(f"  美术：{job_dir / 'output' / '美术'}")
+    typer.echo(f"  日志：{job_dir / 'run.log'}")
     typer.echo("发给别人：gameaihack share <该目录> --to ./结果.zip")
 
 
@@ -212,11 +220,12 @@ def report_cmd(job_dir: Path = typer.Argument(..., exists=True, path_type=Path))
     if errs:
         _die("IR 无效：\n" + "\n".join(errs), EXIT_SCHEMA)
     render_deliverable(job_dir, ir)
-    typer.echo(f"完成：{job_dir}")
-    typer.echo(f"  raw：   {job_dir / 'raw'}")
-    typer.echo(f"  output：{job_dir / 'output'}")
-    typer.echo(f"  策划：  {job_dir / 'output' / '策划'}")
-    typer.echo(f"  美术：  {job_dir / 'output' / '美术'}")
+    from gameaihack.publish.kit import seal_kit
+
+    seal_kit(job_dir, ir)
+    typer.echo(f"复刻包：{job_dir / 'output'}")
+    typer.echo(f"  说明：{job_dir / 'output' / '复刻说明.md'}")
+    typer.echo(f"  日志：{job_dir / 'run.log'}")
 
 
 @app.command("share")

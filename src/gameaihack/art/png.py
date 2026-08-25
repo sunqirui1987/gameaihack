@@ -12,7 +12,7 @@ def write_rgba_png(path: Path, width: int, height: int, pixels: bytes) -> None:
     raw = b"".join(
         b"\x00" + pixels[y * width * 4 : (y + 1) * width * 4] for y in range(height)
     )
-    compressed = zlib.compress(raw, 9)
+    compressed = zlib.compress(raw, 1)
 
     def chunk(tag: bytes, data: bytes) -> bytes:
         crc = zlib.crc32(tag + data) & 0xFFFFFFFF

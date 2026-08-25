@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from gameaihack.core.fs import iter_files, so_files
 from gameaihack.extract.base import KIND_DIR, ExtractItem, ExtractReport, sha256_path
 from gameaihack.extract.stringsutil import nearby_keys, strings_from_file
 from gameaihack.extract.xxtea import looks_text, strip_sign, xxtea_decrypt
@@ -17,10 +18,12 @@ def extract_cocos(merged: Path, dest: Path) -> ExtractReport:
     report.extra["xxtea_key_candidates"] = len(keys)
     report.extra["xxtea_key_found"] = False
 
-    patterns = ("*.lua", "*.luac", "*.luax", "*.js", "*.jsc", "*.jsc.bin")
+    script_suf = {".lua", ".luac", ".luax", ".js", ".jsc"}
     files: list[Path] = []
-    for pat in patterns:
-        files.extend(merged.rglob(pat))
+    for path in iter_files(merged):
+        name = path.name.lower()
+        if path.suffix.lower() in script_suf or name.endswith(".jsc.bin"):
+            files.append(path)
     report.discovered = len(files)
 
     for path in files:
@@ -82,7 +85,7 @@ def extract_cocos(merged: Path, dest: Path) -> ExtractReport:
 
 def _collect_keys(merged: Path) -> list[str]:
     keys: list[str] = []
-    for so in merged.rglob("*.so"):
+    for so in so_files(merged):
         strs = strings_from_file(so, min_len=4)
         for k in nearby_keys(strs):
             if k not in keys:

@@ -217,13 +217,15 @@ def iter_source_files(job_dir: Path) -> list[Path]:
         extract_dir(job_dir) / "normalized" / "maps",
         unpack_dir(job_dir) / "merged" / "assets",
     ]
+    from gameaihack.core.fs import iter_files
+
     found: list[Path] = []
     seen: set[str] = set()
     for root in roots:
         if root.is_file():
             candidates = [root]
         elif root.is_dir():
-            candidates = [p for p in root.rglob("*") if p.is_file()]
+            candidates = list(iter_files(root))
         else:
             continue
         for p in candidates:
@@ -262,7 +264,7 @@ def iter_source_files(job_dir: Path) -> list[Path]:
 
 
 def index_markdown(job_dir: Path, files: list[Path]) -> str:
-    lines = ["# 原始文件索引\n", "DSH / LLM 应读这些，而不是 apk / so。\n", "| 路径 | 字节 |", "|---|---|"]
+    lines = ["# 原始文件索引\n", "Agent 应读 raw/ 里这些文件，而不是 apk / so。\n", "| 路径 | 字节 |", "|---|---|"]
     for p in files:
         try:
             rel = p.relative_to(job_dir).as_posix()

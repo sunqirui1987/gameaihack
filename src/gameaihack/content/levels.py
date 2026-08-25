@@ -24,11 +24,20 @@ def rebuild_levels(
             seen.add(lv["id"])
             levels.append(lv)
 
-    for path in list(merged.rglob("*.tmx")) + list(norm.rglob("*.tmx")):
-        lv = _from_tmx(path, preview_dir)
-        if lv and lv["id"] not in seen:
-            seen.add(lv["id"])
-            levels.append(lv)
+    from gameaihack.core.fs import iter_files
+
+    tmx_seen: set[Path] = set()
+    for root in (merged, norm):
+        if not root.exists():
+            continue
+        for path in iter_files(root):
+            if path.suffix.lower() != ".tmx" or path in tmx_seen:
+                continue
+            tmx_seen.add(path)
+            lv = _from_tmx(path, preview_dir)
+            if lv and lv["id"] not in seen:
+                seen.add(lv["id"])
+                levels.append(lv)
 
     for t in tables:
         if t.get("role") != "level":
@@ -70,10 +79,14 @@ def rebuild_levels(
 
 
 def _iter_json(*roots: Path):
+    from gameaihack.core.fs import iter_files
+
     for root in roots:
         if not root.exists():
             continue
-        for p in root.rglob("*.json"):
+        for p in iter_files(root):
+            if p.suffix.lower() != ".json":
+                continue
             name = p.name.lower()
             rel = p.as_posix().lower()
             if "/res/" in rel or "/androidx" in rel:

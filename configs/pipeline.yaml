@@ -4,7 +4,7 @@
 job:
   keep_raw: true
   mode: standard             # brief | standard | deep
-  resume_from: null          # unpack | fingerprint | extract | normalize | levels | design | report
+  resume_from: null          # unpack | fingerprint | extract | normalize | levels | design | ai | report
 
 ingest:
   use_apktool: true

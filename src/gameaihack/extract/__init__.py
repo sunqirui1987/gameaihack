@@ -29,18 +29,17 @@ def run_extract(
     has_unity = engine == "unity" or data_dir.exists()
     if adapters.get("unity", True) and has_unity:
         reports.append(extract_unity(merged, dest, max_files=cap))
-    has_lua = False
-    if engine in {"cocos", "unknown"}:
-        has_lua = next(merged.rglob("*.lua"), None) is not None or next(merged.rglob("*.jsc"), None) is not None
-    if adapters.get("cocos", True) and (engine == "cocos" or has_lua):
+
+    extra: set[str] = set()
+    if engine == "unknown":
+        from gameaihack.core.fs import suffixes_present
+
+        extra = suffixes_present(merged, {".lua", ".jsc", ".luac", ".pak", ".ucas", ".pck"})
+    if adapters.get("cocos", True) and (engine == "cocos" or extra & {".lua", ".jsc", ".luac"}):
         reports.append(extract_cocos(merged, dest))
-    if adapters.get("unreal", True) and (
-        engine == "unreal" or next(merged.rglob("*.pak"), None) is not None
-    ):
+    if adapters.get("unreal", True) and (engine == "unreal" or extra & {".pak", ".ucas"}):
         reports.append(extract_unreal(merged, dest))
-    if adapters.get("godot", True) and (
-        engine == "godot" or next(merged.rglob("*.pck"), None) is not None
-    ):
+    if adapters.get("godot", True) and (engine == "godot" or extra & {".pck"}):
         reports.append(extract_godot(merged, dest))
 
     merged_report = ExtractReport(adapter="all")

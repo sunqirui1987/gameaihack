@@ -4,6 +4,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from gameaihack.core.fs import so_files
 from gameaihack.extract.stringsutil import nearby_keys, strings_from_file
 
 
@@ -22,7 +23,7 @@ def run_runtime(
     info: dict = {"so_strings": 0, "pulled": False, "warnings": []}
     dest.mkdir(parents=True, exist_ok=True)
     all_strings: list[str] = []
-    for so in merged.rglob("*.so"):
+    for so in so_files(merged):
         all_strings.extend(strings_from_file(so)[:2000])
     uniq = []
     seen = set()

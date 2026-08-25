@@ -1,4 +1,4 @@
-"""写出 output/策划 的机器骨架。游戏怎么玩由 DSH 根据 raw + 美术写，这里不写死某一款游戏。"""
+"""写出 output/策划 的机器骨架。游戏怎么玩由 agent 根据 raw + 美术写，这里不写死某一款游戏。"""
 
 from __future__ import annotations
 
@@ -43,9 +43,9 @@ def write_gamebook(dest: Path, ir: dict, ctx: dict) -> None:
     _write_level_book(dest / "关卡", meta)
     ai = dest / "ai" / "gdd.md"
     if ai.exists():
-        (dest / "附录-DSH详述.md").write_text(
+        (dest / "附录-agent详述.md").write_text(
             "# 附录：模型长文\n\n"
-            "和正文章节不一致时，以 DSH 写的正文为准。\n\n"
+            "和正文章节不一致时，以 agent 写的正文为准。\n\n"
             + ai.read_text(encoding="utf-8"),
             encoding="utf-8",
         )
@@ -143,7 +143,7 @@ def _toc(m: _Meta) -> str:
     lines = [
         f"# {m.title} · 策划稿\n",
         f"{m.pkg}  {m.version}\n",
-        "完整玩法由 DSH 读 raw/ 和美术后写入。机器骨架只提供目录和关卡编号。\n",
+        "完整玩法由 agent 读 raw/ 和美术后写入。机器骨架只提供目录和关卡编号。\n",
         "这份策划加上 [`../美术/`](../美术/)，用来用自己的引擎对照重做。\n",
         "| 文档 | 写什么 |",
         "|---|---|",
@@ -154,7 +154,7 @@ def _toc(m: _Meta) -> str:
         "| [图鉴/](图鉴/) | 按美术目录对照 |",
         "| [关卡/](关卡/) | 按章关卡 |",
         "",
-        "以 DSH 正文为准。原画在 [`../美术/`](../美术/)。\n",
+        "以 agent 正文为准。原画在 [`../美术/`](../美术/)。\n",
     ]
     return "\n".join(lines)
 
@@ -181,7 +181,7 @@ def _cover(m: _Meta) -> str:
             "3. [关卡/](关卡/)",
             "4. [经济与商业化](05-经济与商业化.md)",
             "",
-            "玩法细节以 DSH 根据本包 raw/ 写出的正文为准。\n",
+            "玩法细节以 agent 根据本包 raw/ 写出的正文为准。\n",
         ]
     )
 
@@ -208,7 +208,7 @@ def _play(m: _Meta) -> str:
 
 {_claim_lines(m.ir, 3, 4, 18)}
 
-完整循环、角色技能、胜负条件由 DSH 根据 raw/ 补全，不要用别的游戏的规则来填。
+完整循环、角色技能、胜负条件由 agent 根据 raw/ 补全，不要用别的游戏的规则来填。
 """
 
 
@@ -234,7 +234,7 @@ def _levels(m: _Meta) -> str:
 
 {themes}
 {extra}
-每一章的写法由 DSH 按本包内容补。几何和解法以 raw 里解出的为准。
+每一章的写法由 agent 按本包内容补。几何和解法以 raw 里解出的为准。
 """
 
 
@@ -246,7 +246,7 @@ def _growth(m: _Meta) -> str:
 
 {_claim_lines(m.ir, 8, 9)}
 
-养成线（角色、装备、通行证、收集）由 DSH 根据本包系统来写。
+养成线（角色、装备、通行证、收集）由 agent 根据本包系统来写。
 """
 
 
@@ -258,7 +258,7 @@ def _economy(m: _Meta) -> str:
 
 {_claim_lines(m.ir, 10, 11)}
 
-货币、商店、广告点位由 DSH 根据本包来写，不套用其它游戏的经济表。
+货币、商店、广告点位由 agent 根据本包来写，不套用其它游戏的经济表。
 """
 
 
@@ -270,7 +270,7 @@ def _systems(m: _Meta) -> str:
 
 {_claim_lines(m.ir)}
 
-大厅有哪些入口、各模式干什么，由 DSH 根据本包界面和程序集来列。
+大厅有哪些入口、各模式干什么，由 agent 根据本包界面和程序集来列。
 """
 
 
@@ -301,7 +301,7 @@ def _tech(m: _Meta) -> str:
 def _ops(m: _Meta) -> str:
     return f"""# 运营与内容
 
-活动、赛季、关卡投放节奏由 DSH 根据本包的活动资源和章节结构来写。
+活动、赛季、关卡投放节奏由 agent 根据本包的活动资源和章节结构来写。
 """
 
 
@@ -321,7 +321,7 @@ def _write_level_book(dest: Path, m: _Meta) -> None:
         by_ch.setdefault(key, []).append(lv)
     toc = [
         f"# 关卡策划 · {m.title}\n",
-        "按章列出本包索引到的关。每一章的玩法说明由 DSH 补全。\n",
+        "按章列出本包索引到的关。每一章的玩法说明由 agent 补全。\n",
         "| 章 | 关数 | 文档 |",
         "|---|---|---|",
     ]
@@ -358,7 +358,7 @@ def _chapter_doc(m: _Meta, ch: int | str, items: list[dict]) -> str:
         extra = lv.get("extra") or {}
         num = extra.get("level") or i
         lines.append(f"| {num} | `{lv.get('id')}` |")
-    lines.append("\n本章目标、房间、胜负由 DSH 根据 raw 补。\n")
+    lines.append("\n本章目标、房间、胜负由 agent 根据 raw 补。\n")
     return "\n".join(lines)
 
 
@@ -388,7 +388,7 @@ def _write_art_guides(dest: Path, m: _Meta) -> None:
         if len(pngs) > len(picked):
             lines.append(f"其余见 `美术/{folder}/`。\n")
         (dest / fn).write_text("\n".join(lines), encoding="utf-8")
-    toc.append("\n每张图用在哪个系统，由 DSH 在策划正文里标明。\n")
+    toc.append("\n每张图用在哪个系统，由 agent 在策划正文里标明。\n")
     (dest / "README.md").write_text("\n".join(toc), encoding="utf-8")
 
 

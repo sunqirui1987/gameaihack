@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from datetime import datetime, timezone
@@ -28,18 +27,9 @@ def make_job_id(package_name: str, input_path: Path, explicit: str | None = None
 
 
 def sha256_file(path: Path, limit: int | None = None) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        n = 0
-        while True:
-            chunk = f.read(1024 * 1024)
-            if not chunk:
-                break
-            h.update(chunk)
-            n += len(chunk)
-            if limit and n >= limit:
-                break
-    return h.hexdigest()
+    from gameaihack.core.fs import sha256_path
+
+    return sha256_path(path, limit)
 
 
 class Job:
@@ -67,6 +57,9 @@ class Job:
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return path
 
+    def run_log_path(self) -> Path:
+        return self.dir / "run.log"
+
     def append_event(self, stage: str, ok: bool, message: str, **extra) -> None:
         rec = {
             "ts": utc_now().isoformat(),
@@ -77,10 +70,15 @@ class Job:
         }
         with (self.dir / "events.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        log = self.dir / "pipeline.log"
-        with log.open("a", encoding="utf-8") as f:
-            flag = "ok" if ok else "FAIL"
-            f.write(f"[{rec['ts']}] {flag} {stage}: {message}\n")
+        from gameaihack.core.progress import log
+
+        flag = "ok" if ok else "FAIL"
+        log(f"[{stage}] {flag}  {message}")
+        try:
+            with (self.dir / "pipeline.log").open("a", encoding="utf-8") as pf:
+                pf.write(f"[{rec['ts']}] {flag} {stage}: {message}\n")
+        except OSError:
+            pass
 
     def write_manifest(self, **kwargs) -> None:
         path = self.dir / "run_manifest.json"

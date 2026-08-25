@@ -23,19 +23,20 @@ NET_PAT = re.compile(r"https?://|/api/|protobuf|HttpClient|WWW\.|UnityWebRequest
 
 
 def scan_text_blob(merged: Path, norm: Path, limit_files: int = 400) -> str:
+    from gameaihack.core.fs import iter_files
+
     chunks: list[str] = []
     n = 0
+    text_suf = {".lua", ".js", ".json", ".txt", ".xml", ".cs", ".gd", ".tscn", ".csv", ".plist"}
     for root in (norm, merged):
         if not root.exists():
             continue
-        for p in root.rglob("*"):
-            if not p.is_file():
-                continue
-            if p.suffix.lower() not in {".lua", ".js", ".json", ".txt", ".xml", ".cs", ".gd", ".tscn", ".csv", ".plist"}:
-                continue
-            if p.stat().st_size > 1_500_000:
+        for p in iter_files(root):
+            if p.suffix.lower() not in text_suf:
                 continue
             try:
+                if p.stat().st_size > 1_500_000:
+                    continue
                 chunks.append(p.read_text(encoding="utf-8", errors="ignore")[:80000])
             except OSError:
                 continue

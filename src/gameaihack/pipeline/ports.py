@@ -1,14 +1,9 @@
 """流水线端口。实现可以换，调用方只认这些接口。
 
-数据流：
+复刻路径（主契约）：
 
-    包名/APK  →  Unpacker  → raw/unpacked
-              →  Fingerprinter
-              →  Extractor     → raw/extract
-              →  TableNormalizer / LevelIndexer
-              →  ArtRipper     → output/美术
-              →  DesignAgent   → output/策划   （DSH 读 raw + 美术）
-              →  Publisher     → output/ 收口
+    包 → 解开 raw/ → 抽出 output/美术 → agent（grok/codex/dsh）读 raw+美术写出 output/策划
+        → 封口 复刻说明.md（策划与美术怎么对照着重做）
 """
 
 from __future__ import annotations
@@ -147,7 +142,7 @@ class ArtRipper(Protocol):
 
 @runtime_checkable
 class DesignAgent(Protocol):
-    """读 raw + 美术，写 output/策划。默认实现是 DSH。"""
+    """读 raw + 美术，写 output/策划。通道 grok / codex / dsh。"""
 
     def require(self) -> Any:
         """检查 agent / 模型密钥。没有就抛。"""
@@ -159,7 +154,10 @@ class DesignAgent(Protocol):
 @runtime_checkable
 class Publisher(Protocol):
     def render(self, job_dir: Path, ir: dict, *, thumbs_only: bool, overwrite_design: bool) -> None:
-        """写 output 骨架或收口（美术清单、data）。overwrite_design=False 时不覆盖 DSH 策划。"""
+        """写 output 骨架或收口（美术清单、data）。overwrite_design=False 时不覆盖 agent 策划。"""
 
     def harvest(self, job_dir: Path) -> int:
         """把散落的策划收口到 output/策划。"""
+
+    def seal(self, job_dir: Path, ir: dict) -> dict:
+        """封口复刻包：复刻说明 + 完整度。不覆盖策划正文。"""

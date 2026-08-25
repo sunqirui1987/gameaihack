@@ -48,7 +48,7 @@ def write_ai_projects(
 ) -> tuple[Path, Path]:
     """写出 output/（策划稿 + 美术）。raw/ 保持不动。
 
-    overwrite_design=False 时保留 DSH 已经写好的策划，只补美术清单和根 README。
+    overwrite_design=False 时保留 agent 已经写好的策划，只补美术清单和根 README。
     """
     migrate_game_to_output(job_dir)
     game = game_dir(job_dir)
@@ -92,7 +92,7 @@ def write_ai_projects(
 
 
 def harvest_dsh(job_dir: Path) -> int:
-    """把 DSH 写在 game/策划、./策划 等处的 markdown 收口到 output/策划。"""
+    """把 agent 写在 game/策划、./策划 等处的 markdown 收口到 output/策划。"""
     dest = output_dir(job_dir) / "策划"
     dest.mkdir(parents=True, exist_ok=True)
     dest_r = dest.resolve()
@@ -122,13 +122,13 @@ def _write_root(job_dir: Path, ir: dict, ctx: dict, *, n_files: int, dsh_final: 
     game = game_dir(job_dir)
     game.mkdir(parents=True, exist_ok=True)
     pkg = c.get("package_name") or job_dir.name
-    note = "策划由 DSH 根据 raw/ 写成，这是最终稿。" if dsh_final else "先打开 output/策划。"
+    note = "策划由 agent 根据 raw/ 写成，这是最终稿。" if dsh_final else "先打开 output/策划。"
     (job_dir / "README.md").write_text(
         (
             f"# {pkg}\n\n"
             f"{c.get('one_liner') or ''}\n\n"
             "| 目录 | 是什么 |\n|---|---|\n"
-            "| [raw/](raw/) | 解包后的原始数据（给 DSH 读） |\n"
+            "| [raw/](raw/) | 解包后的原始数据（给 agent 读） |\n"
             "| [output/](output/) | **最终成品**：策划稿 + 美术 |\n\n"
             f"{note}\n\n"
             "先打开 [output/策划/00-封面.md](output/策划/00-封面.md)。\n"
@@ -150,7 +150,7 @@ def _write_root(job_dir: Path, ir: dict, ctx: dict, *, n_files: int, dsh_final: 
     (raw / "README.md").write_text(
         (
             f"# raw · {pkg}\n\n"
-            "解包后的原始工程。DSH 分析的输入就是这里。\n\n"
+            "解包后的原始工程。agent 分析的输入就是这里。\n\n"
             "- `unpacked/` APK/XAPK 解开\n"
             "- `extract/normalized/` 抽出的图音配置\n"
             "- `ir/` 机器 IR\n\n"
@@ -306,12 +306,14 @@ def _copy_extracted(job_dir: Path, art: Path, data: Path) -> tuple[list[dict], l
     mapping = [(b, art / b, copied_art) for b in ART_BUCKETS] + [
         (b, data / b, copied_data) for b in DATA_BUCKETS
     ]
+    from gameaihack.core.fs import iter_files
+
     for bucket, dest, bag in mapping:
         src = src_root / bucket
         if not src.is_dir():
             continue
-        for f in src.rglob("*"):
-            if not f.is_file() or f.suffix.lower() in _SKIP_SUFFIX:
+        for f in iter_files(src):
+            if f.suffix.lower() in _SKIP_SUFFIX:
                 continue
             try:
                 size = f.stat().st_size
@@ -326,39 +328,10 @@ def _copy_extracted(job_dir: Path, art: Path, data: Path) -> tuple[list[dict], l
 
 
 def _write_art_catalog(art: Path, ir: dict, copied: list[dict]) -> None:
-    by_ir = {(r.get("export_path") or ""): r for r in (ir.get("resources") or [])}
-    for item in copied:
-        rec = by_ir.get(item["path"])
-        if rec:
-            item["id"] = rec.get("id")
-            item["kind"] = rec.get("kind")
-            item["original_path"] = rec.get("original_path")
-    counts = {b: sum(1 for c in copied if c["bucket"] == b) for b in ART_BUCKETS}
-    catalog = {
-        "package": (ir.get("package") or {}).get("name"),
-        "job_id": ir.get("job_id"),
-        "counts": counts,
-        "n_files": len(copied),
-        "files": copied,
-    }
-    (art / "catalog.json").write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    lines = [
-        f"# 美术清单 · {(ir.get('package') or {}).get('name')}\n",
-        f"共 {len(copied)} 个文件。\n",
-        "| 目录 | 数量 |",
-        "|---|---|",
-    ]
-    for b in ART_BUCKETS:
-        lines.append(f"| `{b}/` | {counts[b]} |")
-    lines.append("\n## 文件\n")
-    lines.append("| 路径 | 类型 | 大小 |")
-    lines.append("|---|---|---|")
-    for item in copied[:400]:
-        kind = item.get("kind") or item["bucket"]
-        lines.append(f"| `{item['path']}` | {kind} | {item['bytes']} |")
-    if len(copied) > 400:
-        lines.append(f"\n其余 {len(copied) - 400} 条见 `catalog.json`。\n")
-    (art / "catalog.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    from gameaihack.art.manifest import write_manifest
+
+    write_manifest(art, ir)
+    _ = copied
 
 
 def _architecture_md(ir: dict, ctx: dict) -> str:

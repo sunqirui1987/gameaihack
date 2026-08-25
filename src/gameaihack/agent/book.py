@@ -1,15 +1,17 @@
-"""用 DSH + LLM 读解包原始文件，写出策划文档。"""
+"""读 raw/，经 grok / Codex / DSH 驱动写出 ../output/策划。"""
 
 from __future__ import annotations
 
 import json
+import os
 import re
+import time
 from pathlib import Path
 
 from gameaihack.agent.corpus import batch_text, index_markdown, iter_source_files
-from gameaihack.agent.dsh import run_dsh
-from gameaihack.core.layout import art_dir, design_dir, raw_dir
+from gameaihack.agent.drivers import AgentRequest, is_retryable, parse_via, resolve_driver
 from gameaihack.agent.llm import LlmConfig, chat, resolve_llm
+from gameaihack.core.layout import design_dir, raw_dir
 
 SYSTEM = (
     "你是游戏策划。输入是从安装包解出来的原始文本。"
@@ -35,39 +37,28 @@ USER_TMPL = """游戏 `{pkg}`，引擎 {engine}，品类猜测 {genre}。
 {batch}
 """
 
-DSH_PROMPT = """工作区根目录是 jobs/<包名>。
+BOOK_PROMPT = """你写的不是分析备忘，而是一份**可直接开工的新游戏制作说明书**。
+读者用自己的引擎，对照 策划 + 美术 重做玩法相同的新游戏。不要重打包原 APK。
 
-目标：output/策划/ + output/美术/ 合在一起，足够用别的引擎重做一版玩法相同的游戏。
+**事实源（最高优先级，先读完再写）：**
+- `output/策划/_事实源.md`  机器把 raw 清单 + 美术清单合成的一份，必须遵守
+- `output/美术/清单/给策划.md`  能用的美术目录和代表文件
+- `raw/清单/给策划.md`  能写的表、关卡、引擎事实
+- 详细表：`美术/清单/全部.csv`、`raw/ir/*.json`
 
-你要：读懂 raw/ 和 output/美术/，写出完整策划到 output/策划/。
-- raw/：解包数据（配置、关卡索引、manifest、文本）
-- output/美术/：抽出的 PNG（角色、服装、界面、场景、礼包、头像…）
-- output/策划/：最终成品，你写的就是最后一稿
+禁止：
+- 发明事实源里没有的美术目录或系统名
+- 嵌图 path 不在美术清单里
+- 把 IR 里的 merge/模板品类当成玩法（以 raw 文件和美术清单为准）
+- 编造关卡坐标、Unity 类名、盗版客户端
 
-策划必须把美术整合进去：正文嵌图，并写 图鉴/（角色、服装、界面、场景、礼包），每张图注明用在哪个系统。
-
-过程：每读一个文件、每写一个文件，先用一句话说你在做什么。
-
-写法：给人看的正式 GDD。嵌 markdown 图片，例如 `![](../美术/角色/redbird.png)`。
-不要写 Unity 类名、程序集、「来源：」。不要编造每关猪的坐标。
-不要往美术目录拷二进制。不要写盗版客户端。
+完成标准：
+- 程序只看 02-核心玩法 能做第一局
+- 图鉴文件夹与美术清单一一对应
+- 06-系统总表：系统 | 事实源依据 | 美术清单目录 | 代表图
+- 整局过程写全：大厅 → 开局 → 操作 → 胜负 → 结算 → 成长/商店
+- 没证据标「未知，重做时自行设计」
 """
-
-
-def _art_overview(job_dir: Path, limit: int = 36) -> str:
-    art = art_dir(job_dir)
-    if not art.is_dir():
-        return "（还没有抽出 PNG）"
-    lines: list[str] = []
-    for folder in sorted(p for p in art.iterdir() if p.is_dir()):
-        pngs = list(folder.rglob("*.png"))
-        if not pngs:
-            continue
-        sample = "、".join(p.name for p in pngs[:4])
-        lines.append(f"- `{folder.name}/` {len(pngs)} 张，例如 {sample}")
-        if len(lines) >= limit:
-            break
-    return "\n".join(lines) or "（美术目录是空的）"
 
 
 def _chapter_list(ir: dict) -> list[int]:
@@ -84,140 +75,230 @@ def _chapter_list(ir: dict) -> list[int]:
     return sorted(chs)
 
 
-def dsh_book_tasks(job_dir: Path, ir: dict) -> list[tuple[str, str]]:
-    """DSH 分步：先全书，再按章关卡。每一步都要读 raw 和美术。"""
+def _ir_brief(ir: dict) -> str:
+    fp = ir.get("fingerprint") or {}
+    genre = (ir.get("genre_guess") or {}).get("id") or "未判定"
+    n_lv = len(ir.get("levels") or [])
+    n_tb = len(ir.get("tables") or [])
+    n_res = len(ir.get("resources") or [])
+    claims = ir.get("claims") or []
+    bits = []
+    for c in claims[:12]:
+        t = str(c.get("text") or "").strip()
+        if t:
+            bits.append(f"- {t}")
+    claim_txt = "\n".join(bits) or "- （IR 尚无主张）"
+    return (
+        f"引擎 {fp.get('engine') or '—'} / {fp.get('script_backend') or '—'}，"
+        f"品类猜测 {genre}，关卡 {n_lv}，表 {n_tb}，资源 {n_res}。\n\n"
+        f"机器已抽出的主张（供核对，以 raw 为准）：\n{claim_txt}\n"
+    )
+
+
+def book_tasks(job_dir: Path, ir: dict) -> list[tuple[str, str]]:
+    """分步还原整包：核心玩法 → 系统全书 → 关卡+图鉴。"""
+    from gameaihack.content.facts import load_fact_source, write_fact_source
+
     pkg = (ir.get("package") or {}).get("name") or job_dir.name
     n_lv = len(ir.get("levels") or [])
     chapters = _chapter_list(ir)
     n_ch = len(chapters) or 0
-    art = _art_overview(job_dir)
+    facts = load_fact_source(job_dir)
+    if not facts.strip():
+        write_fact_source(job_dir, ir)
+        facts = load_fact_source(job_dir)
+    if len(facts) > 12000:
+        facts = facts[:12000] + "\n\n（事实源过长，已截断。完整见 output/策划/_事实源.md）\n"
     head = (
-        DSH_PROMPT
-        + f"\n游戏 `{pkg}`。已索引关卡 {n_lv}，章节 {n_ch}。\n\n"
-        + f"美术目录现在有：\n{art}\n\n"
-        + "先读 raw/AGENTS.md、raw/ir/、raw/fingerprint.json，再 ls output/美术/。\n"
+        BOOK_PROMPT
+        + f"\n游戏 `{pkg}`。\n"
+        + _ir_brief(ir)
+        + "\n## 事实源摘录（完整文件在 策划/_事实源.md）\n\n"
+        + facts
+        + "\n\n先读 `output/策划/_事实源.md`，再读 raw/ir/ 与 美术/清单/。不要 ls 上万张 PNG。\n"
     )
-    tasks = [
+    return [
         (
-            "全书策划",
+            "核心玩法",
             head
-            + "请写出完整策划正文到 output/策划/，当作重做说明书：\n"
-            + "- README.md（怎么用这份策划 + 美术重做游戏）\n"
-            + "- 00-封面.md 01-产品定位.md 02-核心玩法.md 03-关卡设计.md\n"
-            + "- 04-成长与进度.md 05-经济与商业化.md 06-系统总表.md\n"
-            + "- 07-新手-UI-社交.md 08-技术约束.md 09-未知与下一步.md\n"
-            + "封面、玩法、大厅必须嵌角色/界面图。写完列出文件。\n",
+            + "写制作入口和能直接做出来的第一局。文件：\n"
+            + "- 策划/README.md：制作入口。先做什么、读哪几篇、美术怎么用\n"
+            + "- 策划/制作顺序.md：新游戏开发顺序（建议 8～15 步，每步交付物）\n"
+            + "- 策划/00-封面.md：这是什么游戏、谁玩、一句话循环、对照图\n"
+            + "- 策划/01-产品定位.md：品类、对标、留存（有证据才写）\n"
+            + "- 策划/02-核心玩法.md 必须按下面小标题写全，写到能做一局：\n"
+            + "  1. 玩家目标  2. 一局时间线（从点开始到结算，逐步）\n"
+            + "  3. 操作与输入  4. 场上有什么（角色/道具/障碍）\n"
+            + "  5. 胜负与失败  6. 计分/星级/评价  7. HUD 与关键界面\n"
+            + "  8. 大厅如何进这一局  9. 重做时第一周只做哪些\n"
+            + "封面和 02 的嵌图必须来自事实源「代表文件」。图鉴目录名不要自己起。写完列出文件。\n",
         ),
         (
-            "美术图鉴",
+            "系统全书",
             head
-            + "把 output/美术/ 整合成策划图鉴，写到 output/策划/图鉴/：\n"
-            + "- 图鉴/README.md 重做对照表：系统 → 美术目录 → 怎么用\n"
-            + "- 图鉴/角色.md 图鉴/服装.md 图鉴/界面.md 图鉴/场景.md\n"
-            + "- 图鉴/礼包.md 图鉴/头像.md\n"
-            + "每张图写：文件名、用在哪个界面/角色/关卡。服装按套装分组。\n"
-            + "图用 markdown 引用，不要复制二进制。\n",
+            + "把整包系统写成制作规格，别人按文档就能做功能列表：\n"
+            + "- 03-关卡设计.md：关卡类型、难度曲线、解锁、一关怎么配\n"
+            + "- 04-成长与进度.md：账号进度、解锁、收集、通行证/赛季（有则写）\n"
+            + "- 05-经济与商业化.md：货币、商店、广告点、付费点；表里有价格就抄下来\n"
+            + "- 06-系统总表.md：一张表列出所有系统、入口、依赖、对应美术目录\n"
+            + "- 07-新手-UI-社交.md：屏幕流（启动→登录/跳过→大厅→各入口）、按钮、社交\n"
+            + "- 08-技术约束.md：原作引擎/分辨率/横竖屏；新游戏用自己的引擎即可\n"
+            + "- 09-未知与下一步.md：没还原的规则，以及制作时必须自补的清单\n"
+            + "06 的「美术目录」列必须填事实源里的文件夹名。系统要对上 raw 清单的表。没证据写未知。\n",
         ),
         (
-            "关卡策划",
+            "关卡与图鉴",
             head
-            + f"请按章写出关卡策划到 output/策划/关卡/。共 {n_ch or '若干'} 章。\n"
-            + "- 关卡/README.md 目录\n"
-            + "- 每一章一个文件：关卡/第001章.md、第002章.md …\n"
-            + "每章写：这一章干什么、怎么玩、关卡表，并嵌对应场景/角色图。\n"
-            + "不要空 JSON，不要资源路径表。写完列出文件数量。\n",
+            + f"关卡和美术必须能直接拿去排期制作。已索引 {n_lv} 关 / {n_ch or '若干'} 章。\n"
+            + "- 关卡/README.md：怎么按章做关\n"
+            + "- 每一章 关卡/第001章.md …：本章目标、玩法变化、关卡表（编号/类型/备注）\n"
+            + "  有布局证据就写摆法；没有就写节奏和目标，标明「摆法未知」\n"
+            + "- 图鉴/README.md 已按事实源建好目录，补全「用在哪」\n"
+            + "- 事实源里每个美术文件夹一篇 图鉴/<文件夹名>.md，文件名必须一致\n"
+            + "- 每篇用事实源列出的代表文件嵌图，写清做新游戏时贴到哪个界面/角色\n"
+            + "不要空 JSON，不要新增事实源没有的图鉴篇名。写完列出文件数量。\n",
         ),
     ]
-    return tasks
+
+
+dsh_book_tasks = book_tasks
+
+
+def _retry_delays() -> list[float]:
+    raw = os.environ.get("GAMEAIHACK_LLM_RETRY", "15,30,60")
+    text = (raw or "").strip().lower()
+    if text in {"0", "off", "none", ""}:
+        return []
+    out: list[float] = []
+    for part in text.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            out.append(max(0.0, float(part)))
+        except ValueError:
+            continue
+    return out
+
+
+def _run_driver(driver, req: AgentRequest, *, cfg=None) -> dict:
+    delays = _retry_delays()
+    last: dict = {"ok": False, "via": getattr(driver, "via", ""), "error": "未知错误"}
+    attempts = 1 + len(delays)
+    from gameaihack.core.progress import log
+
+    for i in range(attempts):
+        last = driver.run(req, cfg=cfg)
+        if last.get("ok"):
+            return last
+        err = str(last.get("error") or "")
+        if i >= attempts - 1 or not is_retryable(err):
+            return last
+        wait = delays[i]
+        log(f"[{driver.via}] 并发/限额，{int(wait)}s 后重试（{i + 1}/{attempts}）：{err[:160]}")
+        if wait:
+            time.sleep(wait)
+    return last
+
+
+def run_book(job_dir: Path, ir: dict, cfg: LlmConfig | None, *, via: str = "grok") -> dict:
+    """读 raw/ + 美术清单，写出策划。过程只打控制台（与 grok/codex CLI 同类）。"""
+    from gameaihack.core.progress import log, stream
+
+    via = parse_via(via)
+    driver = resolve_driver(via)
+    driver.require(cfg)
+    dest = design_dir(job_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    stale = dest / "过程.md"
+    if stale.is_file():
+        try:
+            stale.unlink()
+        except OSError:
+            pass
+    tasks = book_tasks(job_dir, ir)
+    results: list[dict] = []
+    all_ok = True
+    effort = (os.environ.get("GAMEAIHACK_EFFORT") or "xhigh").strip() or "xhigh"
+    for i, (title, prompt) in enumerate(tasks, 1):
+        stream(f"\n{via}  {i}/{len(tasks)}  {title}")
+        req = AgentRequest(
+            job_dir=job_dir,
+            prompt=prompt,
+            model=(cfg.model if cfg else "") or os.environ.get("LLM_MODELS") or "grok-4.6",
+            timeout=int(os.environ.get("GAMEAIHACK_AGENT_TIMEOUT") or "3600"),
+            effort=effort,
+            api_key=cfg.api_key if cfg else "",
+            base_url=cfg.base_url if cfg else "",
+        )
+        step = _run_driver(driver, req, cfg=cfg)
+        results.append({"title": title, "ok": step.get("ok"), "error": step.get("error")})
+        if step.get("ok"):
+            stream(f"{via}  {title}  done")
+        else:
+            all_ok = False
+            log(f"[{via}] 失败：{step.get('error') or 'unknown'}")
+            break
+    err = next((r.get("error") for r in results if not r.get("ok")), "")
+    return {"ok": all_ok, "via": via, "error": err or "", "steps": results}
 
 
 def run_dsh_book(job_dir: Path, ir: dict, cfg: LlmConfig) -> dict:
-    """用 DSH 读 raw + 美术，写出全部策划。过程写到 策划/过程.md 和 raw/dsh.log。"""
-    from datetime import datetime, timezone
-
-    from gameaihack.core.progress import log
-
-    dest = design_dir(job_dir)
-    dest.mkdir(parents=True, exist_ok=True)
-    journal = dest / "过程.md"
-    tasks = dsh_book_tasks(job_dir, ir)
-    started = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    journal.write_text(
-        f"# DSH 提取过程\n\n开始 {started}。共 {len(tasks)} 步：读 raw/ 与 output/美术/，写 output/策划/。\n",
-        encoding="utf-8",
-    )
-
-    def note(msg: str) -> None:
-        line = msg.rstrip()
-        if not line:
-            return
-        with journal.open("a", encoding="utf-8") as f:
-            f.write(line + "\n")
-
-    results: list[dict] = []
-    all_ok = True
-    for i, (title, prompt) in enumerate(tasks, 1):
-        banner = f"[dsh] ========== {i}/{len(tasks)} {title} =========="
-        log(banner)
-        note(f"\n## {i}/{len(tasks)} {title}\n")
-        note(f"开始 {datetime.now(timezone.utc).strftime('%H:%M:%S UTC')}\n")
-        dsh = run_dsh(job_dir, prompt, cfg, timeout=1800, on_line=note)
-        results.append({"title": title, "ok": dsh.get("ok"), "error": dsh.get("error")})
-        if dsh.get("ok"):
-            note(f"\n本步完成。\n")
-        else:
-            all_ok = False
-            note(f"\n本步失败：{dsh.get('error') or 'unknown'}\n")
-            break
-    journal.write_text(
-        journal.read_text(encoding="utf-8")
-        + f"\n## 结束\n\n全部成功：{all_ok}。过程日志同时在 `../../raw/dsh.log`。\n",
-        encoding="utf-8",
-    )
-    err = next((r.get("error") for r in results if not r.get("ok")), "")
-    return {"ok": all_ok, "via": "cli", "error": err or "", "steps": results}
+    """兼容旧名：走 dsh 通道。"""
+    return run_book(job_dir, ir, cfg, via="dsh")
 
 
-def run_ai_analysis(job_dir: Path, ir: dict, *, cfg: LlmConfig | None = None) -> dict:
-    """写入 策划/ai/，并把摘要挂到 ir['ai_analysis']。失败不抛给整条管线。"""
-    cfg = cfg or resolve_llm()
+def run_ai_analysis(
+    job_dir: Path,
+    ir: dict,
+    *,
+    cfg: LlmConfig | None = None,
+    via: str = "grok",
+) -> dict:
+    """写入 策划/ai/，并把摘要挂到 ir['ai_analysis']。"""
+    pytest_run = bool(os.environ.get("PYTEST_CURRENT_TEST"))
+    if cfg is None and not pytest_run:
+        cfg = resolve_llm()
     dest = design_dir(job_dir) / "ai"
     dest.mkdir(parents=True, exist_ok=True)
     files = iter_source_files(job_dir)
     (dest / "文件索引.md").write_text(index_markdown(job_dir, files), encoding="utf-8")
     result: dict = {
         "files": len(files),
+        "via": via,
         "dsh": None,
+        "agent": None,
         "llm": None,
         "ok": False,
     }
     if not files:
         (dest / "原始文件分析.md").write_text("# 原始文件分析\n\n没有可送进模型的文本文件。\n", encoding="utf-8")
+        if pytest_run:
+            ir["ai_analysis"] = result
+            return result
+
+    _ensure_raw_agents(job_dir)
+
+    if not pytest_run:
+        from gameaihack.core.progress import log
+
+        log(f"[{via}] 准备读 raw/ 和 output/美术/，索引文件 {len(files)} 个")
+        book = run_book(job_dir, ir, cfg, via=via)
+        result["agent"] = {
+            "ok": book.get("ok"),
+            "via": book.get("via"),
+            "error": book.get("error"),
+            "steps": book.get("steps"),
+        }
+        result["dsh"] = result["agent"]
+        if book.get("ok"):
+            result["ok"] = True
+        elif book.get("error"):
+            (dest / "agent.error.txt").write_text(str(book["error"]), encoding="utf-8")
         ir["ai_analysis"] = result
         return result
 
-    _ensure_raw_agents(job_dir)
-    import os
-
-    if cfg and not os.environ.get("PYTEST_CURRENT_TEST"):
-        from gameaihack.core.progress import log
-
-        log(f"[dsh] 准备读 raw/ 和 output/美术/，索引文件 {len(files)} 个")
-        dsh = run_dsh_book(job_dir, ir, cfg)
-        result["dsh"] = {
-            "ok": dsh.get("ok"),
-            "via": dsh.get("via"),
-            "error": dsh.get("error"),
-            "steps": dsh.get("steps"),
-        }
-        if dsh.get("text"):
-            (dest / "dsh.md").write_text("# DSH\n\n" + str(dsh["text"]) + "\n", encoding="utf-8")
-        if dsh.get("ok"):
-            result["ok"] = True
-        elif dsh.get("error"):
-            (dest / "dsh.error.txt").write_text(str(dsh["error"]), encoding="utf-8")
-
-    if cfg:
+    if cfg and not result.get("ok"):
         try:
             parsed = _llm_pass(job_dir, ir, files, cfg)
             result["llm"] = {"ok": True, "model": cfg.model}
@@ -230,7 +311,7 @@ def run_ai_analysis(job_dir: Path, ir: dict, *, cfg: LlmConfig | None = None) ->
                     f"# 原始文件分析\n\nLLM 失败：{e}\n\n仍可读 [文件索引.md](文件索引.md)。\n",
                     encoding="utf-8",
                 )
-    else:
+    elif not result.get("ok"):
         (dest / "原始文件分析.md").write_text(
             "# 原始文件分析\n\n未配置 LLM_API_KEY（或 OPENAI_API_KEY / DEEPSEEK_API_KEY）。"
             "已列出文件索引，可稍后配置再跑。\n",
@@ -242,18 +323,28 @@ def run_ai_analysis(job_dir: Path, ir: dict, *, cfg: LlmConfig | None = None) ->
 
 
 def _ensure_raw_agents(job_dir: Path) -> None:
+    job_dir = Path(job_dir)
+    (job_dir / "AGENTS.md").write_text(
+        "# AGENTS.md\n\n"
+        "任务：按 **事实源** 写制作说明书。\n\n"
+        "- 先读 `output/策划/_事实源.md`（raw 清单 + 美术清单）\n"
+        "- 只读 `raw/` 和 `output/美术/`。不要改 raw/ 和 `_事实源.md`\n"
+        "- 图鉴目录名 = 美术清单文件夹；嵌图 path 必须在清单里\n"
+        "- 系统必须对得上 raw 清单的表/关卡，对不上就写未知\n"
+        "- `02-核心玩法.md` 要能做出第一局；`制作顺序.md` 写开发步骤\n",
+        encoding="utf-8",
+    )
     raw = raw_dir(job_dir)
     raw.mkdir(parents=True, exist_ok=True)
     (raw / "AGENTS.md").write_text(
         "# AGENTS.md — raw\n\n"
-        "这是解包后的原始数据。DSH 只读这里。\n\n"
+        "这是解包后的原始数据。模型只读这里。\n\n"
         "- `unpacked/` APK 解开\n"
         "- `extract/normalized/` 抽出的配置/脚本/图音\n"
         "- `ir/` 机器索引\n\n"
-        "不要读 apk/so/dex。把完整中文策划稿写到 `../output/策划/`。\n"
-        "那是最终成品。写给人看的 GDD，不要类名、不要文件路径、不要「来源」。\n"
-        "关卡按章写 markdown，不要输出空的 chXXX_lvYYY.json。\n"
-        "PNG 已在 `../output/美术/`，用 markdown 图片引用。\n",
+        "不要读 apk/so/dex。把**可制作新游戏**的中文说明书写到 `../output/策划/`。\n"
+        "还原整局过程与全部能还原的系统。不要类名、不要编造坐标。\n"
+        "PNG 在 `../output/美术/`，用 markdown 引用。\n",
         encoding="utf-8",
     )
 

@@ -55,6 +55,7 @@ def share_job(job_dir: Path, dest_zip: Path, *, strict: bool = False) -> dict:
 
     skipped: list[str] = []
     added = 0
+    stored_suf = {".png", ".jpg", ".jpeg", ".webp", ".ogg", ".mp3", ".mp4", ".zip", ".gz"}
     with zipfile.ZipFile(dest_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for rel, f in items:
             if is_forbidden(f):
@@ -65,7 +66,7 @@ def share_job(job_dir: Path, dest_zip: Path, *, strict: bool = False) -> dict:
             arc = f"{slug}/{rel}"
             info = zipfile.ZipInfo(filename=arc)
             info.flag_bits |= 0x800
-            info.compress_type = zipfile.ZIP_DEFLATED
+            info.compress_type = zipfile.ZIP_STORED if f.suffix.lower() in stored_suf else zipfile.ZIP_DEFLATED
             info.date_time = time.localtime(f.stat().st_mtime)[:6]
             with f.open("rb") as src, zf.open(info, "w") as dst:
                 shutil.copyfileobj(src, dst)
@@ -91,7 +92,7 @@ def _collect_share_items(job_dir: Path) -> list[tuple[str, Path]]:
     out = output_dir(job_dir)
     if (out / "README.md").is_file() or (out / "策划").is_dir():
         for f in out.rglob("*"):
-            if f.is_file():
+            if f.is_file() and not f.name.startswith("."):
                 items.append((f"output/{f.relative_to(out).as_posix()}", f))
         readme = job_dir / "README.md"
         if readme.is_file():
