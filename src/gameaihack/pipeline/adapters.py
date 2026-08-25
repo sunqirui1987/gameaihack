@@ -64,9 +64,9 @@ class DefaultArtRipper:
 
 
 class LlmDesignAgent:
-    """读 raw/ 和 output/美术/，写 output/策划/。通道 grok / codex / dsh。"""
+    """读 raw/ 和 output/美术/，写 output/策划/。通道 sdk / grok / codex / dsh。"""
 
-    def require(self, via: str = "grok") -> Any:
+    def require(self, via: str = "sdk") -> Any:
         from gameaihack.agent.drivers import resolve_driver
         from gameaihack.agent.llm import resolve_llm
 
@@ -74,7 +74,7 @@ class LlmDesignAgent:
         resolve_driver(via).require(cfg)
         return cfg
 
-    def analyze(self, job_dir: Path, ir: dict, cfg: Any | None = None, via: str = "grok") -> dict:
+    def analyze(self, job_dir: Path, ir: dict, cfg: Any | None = None, via: str = "sdk") -> dict:
         from gameaihack.agent.book import run_ai_analysis
 
         return run_ai_analysis(job_dir, ir, cfg=cfg, via=via)

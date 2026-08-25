@@ -38,7 +38,7 @@ STAGES = list(PORT_STAGES)
 
 
 def os_env_via() -> str:
-    return (os.environ.get("GAMEAIHACK_VIA") or os.environ.get("LLM_VIA") or "grok").strip()
+    return (os.environ.get("GAMEAIHACK_VIA") or os.environ.get("LLM_VIA") or "sdk").strip()
 
 
 def _load_ready_ir(job: Job) -> dict | None:

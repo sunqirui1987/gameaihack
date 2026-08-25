@@ -7,6 +7,7 @@ from .types import AgentError, AgentRequest
 
 class DshDriver:
     via = "dsh"
+    kind = "cli"
     name = "DeepSeek Harness"
     endpoint = "dsh --profile headless"
 

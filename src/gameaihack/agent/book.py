@@ -201,7 +201,7 @@ def _run_driver(driver, req: AgentRequest, *, cfg=None) -> dict:
     return last
 
 
-def run_book(job_dir: Path, ir: dict, cfg: LlmConfig | None, *, via: str = "grok") -> dict:
+def run_book(job_dir: Path, ir: dict, cfg: LlmConfig | None, *, via: str = "sdk") -> dict:
     """读 raw/ + 美术清单，写出策划。过程只打控制台（与 grok/codex CLI 同类）。"""
     from gameaihack.core.progress import log, stream
 
@@ -253,7 +253,7 @@ def run_ai_analysis(
     ir: dict,
     *,
     cfg: LlmConfig | None = None,
-    via: str = "grok",
+    via: str = "sdk",
 ) -> dict:
     """写入 策划/ai/，并把摘要挂到 ir['ai_analysis']。"""
     pytest_run = bool(os.environ.get("PYTEST_CURRENT_TEST"))

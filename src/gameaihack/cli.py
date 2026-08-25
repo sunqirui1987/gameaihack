@@ -124,7 +124,11 @@ def analyze_cmd(
     proxy: Optional[str] = typer.Option(None, "--proxy", help="下载代理（覆盖环境变量和 pipeline.yaml）"),
     no_proxy: bool = typer.Option(False, "--no-proxy"),
     force_fetch: bool = typer.Option(False, "--force-fetch", help="忽略本地缓存，重新下载"),
-    via: Optional[str] = typer.Option(None, "--via", help="agent 通道：grok | codex | dsh（默认 grok，或 GAMEAIHACK_VIA）"),
+    via: Optional[str] = typer.Option(
+        None,
+        "--via",
+        help="sdk（默认，自建 agent）| grok | codex | dsh（本机 CLI，注入 LLM_*）",
+    ),
 ) -> None:
     """解开游戏包，抽出美术。Agent 读 raw/，把策划写到 output/。"""
     if mode not in {"brief", "standard", "deep"}:

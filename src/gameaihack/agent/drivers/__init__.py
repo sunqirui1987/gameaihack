@@ -1,4 +1,4 @@
-"""请求通道：grok CLI / Codex CLI / DSH。Agent 工作区是 raw/。"""
+"""请求通道：自建 agent（sdk）或本机 grok / Codex / DSH CLI。"""
 
 from .registry import DRIVERS, default_via, parse_via, resolve_driver
 from .types import AgentError, AgentRequest, is_retryable

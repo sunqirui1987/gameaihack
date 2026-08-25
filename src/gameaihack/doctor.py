@@ -61,33 +61,34 @@ def run_doctor() -> tuple[list[Check], bool]:
     from gameaihack.agent.drivers.codex import which_codex
 
     grok = which_grok()
-    checks.append(Check("grok", bool(grok), False, grok or "可选 --via grok"))
+    checks.append(Check("grok-cli", bool(grok), False, grok or "可选 --via grok（本机 CLI）"))
     codex = which_codex()
-    checks.append(Check("codex", bool(codex), False, codex or "可选 --via codex"))
+    checks.append(Check("codex-cli", bool(codex), False, codex or "可选 --via codex（本机 CLI）"))
     dsh = dsh_argv()
     checks.append(
-        Check("dsh", bool(dsh), False, " ".join(dsh) if dsh else "可选 --via dsh（Node 22.19+/24）")
+        Check("dsh", bool(dsh), False, " ".join(dsh) if dsh else "可选 --via dsh")
     )
 
     from gameaihack.agent.llm import resolve_llm
 
     llm = resolve_llm()
     if llm:
-        checks.append(Check("llm", True, False, f"{llm.source} · model {llm.model} · {llm.base_url}（dsh 需要）"))
-    else:
-        checks.append(Check("llm", False, False, "dsh 需要 LLM_API_KEY / LLM_BASE_URL / LLM_MODELS"))
-
-    if not grok and not codex and not dsh:
+        checks.append(
+            Check("llm", True, True, f"{llm.source} · {llm.model} · {llm.base_url}")
+        )
         checks.append(
             Check(
                 "agent",
-                False,
                 True,
-                "需要 grok 或 codex 或 dsh 其一。--via grok|codex|dsh",
+                True,
+                "两种模式：--via sdk 自建 agent（默认）；--via grok|codex|dsh 本机 CLI（注入 LLM_*）",
             )
         )
     else:
-        checks.append(Check("agent", True, True, "grok / codex / dsh 至少有一个"))
+        checks.append(
+            Check("llm", False, True, "默认 --via sdk 请设 LLM_API_KEY / LLM_BASE_URL / LLM_MODELS")
+        )
+        checks.append(Check("agent", False, True, "没有 LLM 配置，自建 agent 无法写策划"))
 
     required_fail = any(c.required and not c.ok for c in checks)
     return checks, required_fail

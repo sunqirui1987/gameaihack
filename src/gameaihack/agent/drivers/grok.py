@@ -95,6 +95,7 @@ def grok_argv(
 
 class GrokDriver:
     via = "grok"
+    kind = "cli"
     name = "Grok CLI"
     endpoint = "grok"
 
@@ -108,22 +109,32 @@ class GrokDriver:
             raise AgentError(
                 "找不到 grok CLI。安装 Grok Build 后保证 `grok` 在 PATH，"
                 "或设 GAMEAIHACK_GROK=/绝对路径/grok。"
+                "不装 CLI 请用默认 --via sdk（自建 agent）。"
             )
         return path
 
     def run(self, req: AgentRequest, *, cfg=None) -> dict:
+        from gameaihack.agent.harness import cli_home, inject_cli_env, prepare_grok_home
         from gameaihack.core.progress import log, stream
 
         binary = self.binary if self.popen is not None else self.require(cfg)
         job_dir = req.job_dir.resolve()
         cwd = job_dir
         isolate_job_workspace(cwd)
+        model = req.model or (cfg.model if cfg else "")
+        env = None
+        if cfg and getattr(cfg, "api_key", None):
+            home = prepare_grok_home(cli_home(job_dir, "grok"), cfg)
+            env = inject_cli_env(cfg, grok_home=home)
+            stream(f"grok  CLI  {model or cfg.model}  {cfg.openai_base}")
+        else:
+            stream("grok  CLI  （本机登录，未注入 LLM_*）")
         folder = tempfile.mkdtemp(prefix="gameaihack-grok-")
         try:
             path = write_prompt_file(req.prompt, directory=folder)
             argv = grok_argv(
                 binary=binary,
-                model=req.model,
+                model=model,
                 effort=req.effort or "xhigh",
                 prompt_file=str(path),
                 cwd=str(cwd),
@@ -144,6 +155,8 @@ class GrokDriver:
             kwargs: dict = {}
             if self.popen is not None:
                 kwargs["popen"] = self.popen
+            if env is not None:
+                kwargs["env"] = env
             for line in iter_process_lines(
                 argv,
                 timeout=req.timeout,

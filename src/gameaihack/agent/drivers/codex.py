@@ -1,4 +1,8 @@
-"""通过 `codex exec` 当 agent：cwd 是 job，基于 raw/ 读、往 output/策划 写。"""
+"""通过 `codex exec` 当 agent：cwd 是 job，基于 raw/ 读、往 output/策划 写。
+
+有 LLM_* 时按 Cindy harness 注入独立 CODEX_HOME + model_provider（默认 wire_api=chat，
+不把网关模型塞进官方 /responses）。没有 LLM_* 时用本机 Codex 登录。
+"""
 
 from __future__ import annotations
 
@@ -8,14 +12,26 @@ import shutil
 from .grok import isolate_job_workspace
 from .process import iter_process_lines
 from .types import AgentError, AgentRequest
+from gameaihack.agent.llm import LlmConfig
 
 
 def which_codex(binary: str = "codex") -> str | None:
     return shutil.which(binary or "codex")
 
 
-def codex_argv(*, binary: str, model: str, cwd: str, effort: str = "xhigh") -> list[str]:
-    argv = [binary, "exec", "--json", "--full-auto", "-C", cwd]
+def codex_argv(
+    *,
+    binary: str,
+    model: str,
+    cwd: str,
+    effort: str = "xhigh",
+    cfg: LlmConfig | None = None,
+) -> list[str]:
+    argv = [binary, "exec", "--json", "--sandbox", "workspace-write", "-C", cwd]
+    if cfg and getattr(cfg, "api_key", None):
+        from gameaihack.agent.harness import codex_provider_argv
+
+        argv.extend(codex_provider_argv(cfg))
     if model:
         argv.extend(["-m", model])
     argv.extend(["-c", f'model_reasoning_effort="{effort or "xhigh"}"'])
@@ -25,6 +41,7 @@ def codex_argv(*, binary: str, model: str, cwd: str, effort: str = "xhigh") -> l
 
 class CodexDriver:
     via = "codex"
+    kind = "cli"
     name = "Codex CLI"
     endpoint = "codex exec"
 
@@ -38,19 +55,32 @@ class CodexDriver:
             raise AgentError(
                 "找不到 Codex CLI。安装 `codex` 并保证在 PATH，"
                 "或设 GAMEAIHACK_CODEX=/绝对路径/codex。"
+                "不装 CLI 请用默认 --via sdk（自建 agent）。"
             )
         return path
 
     def run(self, req: AgentRequest, *, cfg=None) -> dict:
+        from gameaihack.agent.harness import cli_home, inject_cli_env, prepare_codex_home
+        from gameaihack.core.progress import stream
+
         binary = self.binary if self.popen is not None else self.require(cfg)
         job_dir = req.job_dir.resolve()
         cwd = job_dir
         isolate_job_workspace(cwd)
+        model = req.model or (cfg.model if cfg else "")
+        env = None
+        if cfg and getattr(cfg, "api_key", None):
+            home = prepare_codex_home(cli_home(job_dir, "codex"), cfg)
+            env = inject_cli_env(cfg, codex_home=home)
+            stream(f"codex  CLI  {model or cfg.model}  {cfg.openai_base}")
+        else:
+            stream("codex  CLI  （本机登录，未注入 LLM_*）")
         argv = codex_argv(
             binary=binary,
-            model=req.model,
+            model=model,
             cwd=str(cwd),
             effort=req.effort or "xhigh",
+            cfg=cfg if (cfg and getattr(cfg, "api_key", None)) else None,
         )
         text_parts: list[str] = []
 
@@ -58,16 +88,16 @@ class CodexDriver:
             msg = _format_event(line)
             if not msg:
                 return
-            from gameaihack.core.progress import stream
-
             stream(msg)
             if req.on_line:
                 req.on_line(msg)
             text_parts.append(msg)
 
-        kwargs = {}
+        kwargs: dict = {}
         if self.popen is not None:
             kwargs["popen"] = self.popen
+        if env is not None:
+            kwargs["env"] = env
         try:
             for line in iter_process_lines(
                 argv,

@@ -7,6 +7,139 @@ from gameaihack.agent.dsh import DshError, _node_ok, dsh_argv, prepare_grok_home
 from gameaihack.agent.llm import LlmConfig, llm_enabled, resolve_llm
 
 
+def test_harness_injects_without_writing_key(tmp_path: Path, monkeypatch):
+    from gameaihack.agent.harness import (
+        grok_api_backend,
+        inject_cli_env,
+        prepare_codex_home,
+        prepare_grok_home,
+    )
+    from gameaihack.agent.llm import LlmConfig
+
+    monkeypatch.delenv("LLM_API_BACKEND", raising=False)
+    monkeypatch.delenv("GAMEAIHACK_API_BACKEND", raising=False)
+    monkeypatch.delenv("GAMEAIHACK_CODEX_WIRE", raising=False)
+    assert grok_api_backend() == "chat_completions"
+    monkeypatch.setenv("LLM_API_BACKEND", "responses")
+    assert grok_api_backend() == "responses"
+    monkeypatch.delenv("LLM_API_BACKEND", raising=False)
+    cfg = LlmConfig(api_key="sk-test", base_url="http://127.0.0.1:8080", model="grok-4.6", source="t")
+    grok_home = prepare_grok_home(tmp_path / "grok", cfg)
+    text = (grok_home / "config.toml").read_text(encoding="utf-8")
+    assert 'default = "grok-4.6"' in text
+    assert "127.0.0.1:8080" in text
+    assert "sk-test" not in text
+    assert "env_key" in text
+    assert "chat_completions" in text
+    env = inject_cli_env(cfg, grok_home=grok_home)
+    assert env["GROK_HOME"] == str(grok_home.resolve())
+    assert env["OPENAI_BASE_URL"].endswith("/v1")
+    assert env["XAI_API_KEY"] == "sk-test"
+    codex_home = prepare_codex_home(tmp_path / "codex", cfg)
+    ctext = (codex_home / "config.toml").read_text(encoding="utf-8")
+    assert "wire_api" in ctext
+    assert 'wire_api = "chat"' in ctext
+    assert "sk-test" not in ctext
+
+
+def test_sdk_tool_loop_writes_design(tmp_path: Path, monkeypatch):
+    from gameaihack.agent.drivers.types import AgentRequest
+    from gameaihack.agent.llm import LlmConfig
+    from gameaihack.agent.sdk import run_sdk
+
+    dest = tmp_path / "output" / "策划"
+    dest.mkdir(parents=True)
+    (dest / "_事实源.md").write_text("# 事实\n", encoding="utf-8")
+    n = {"i": 0}
+
+    def fake_post(_cfg, payload, timeout):
+        n["i"] += 1
+        if n["i"] == 1:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "id": "c1",
+                                    "function": {
+                                        "name": "write",
+                                        "arguments": json.dumps(
+                                            {
+                                                "path": "output/策划/02-核心玩法.md",
+                                                "content": "# 玩法\n一局怎么打\n",
+                                            },
+                                            ensure_ascii=False,
+                                        ),
+                                    },
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        return {"choices": [{"message": {"content": "写完了"}}]}
+
+    monkeypatch.setattr("gameaihack.agent.sdk._post", fake_post)
+    cfg = LlmConfig(api_key="k", base_url="http://127.0.0.1:9", model="m", source="t")
+    result = run_sdk(AgentRequest(job_dir=tmp_path, prompt="写策划"), cfg=cfg, via="codex")
+    assert result["ok"], result
+    assert "一局怎么打" in (dest / "02-核心玩法.md").read_text(encoding="utf-8")
+
+
+def test_fs_tools_refuse_raw_write(tmp_path: Path):
+    from gameaihack.agent.fs_tools import run_tool
+
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "x.txt").write_text("keep", encoding="utf-8")
+    out = run_tool(tmp_path, "write", {"path": "raw/x.txt", "content": "hack"})
+    assert "拒绝" in out
+    assert (tmp_path / "raw" / "x.txt").read_text(encoding="utf-8") == "keep"
+
+
+def test_agent_tools_list_glob_edit(tmp_path: Path):
+    from gameaihack.agent.fs_tools import run_tool
+
+    art = tmp_path / "output" / "美术" / "角色"
+    art.mkdir(parents=True)
+    for i in range(5):
+        (art / f"a{i}.png").write_bytes(b"x")
+    des = tmp_path / "output" / "策划"
+    des.mkdir(parents=True)
+    (des / "02-核心玩法.md").write_text("# 旧\n一局\n", encoding="utf-8")
+    listing = run_tool(tmp_path, "list_dir", {"path": "output/美术"})
+    assert "角色/" in listing
+    assert "files" in listing
+    tree = run_tool(tmp_path, "tree", {"path": ".", "depth": 2})
+    assert "output" in tree or "美术" in tree
+    found = run_tool(tmp_path, "glob", {"pattern": "*.md", "path": "output"})
+    assert "02-核心玩法.md" in found
+    edited = run_tool(
+        tmp_path,
+        "search_replace",
+        {"path": "output/策划/02-核心玩法.md", "old_string": "旧", "new_string": "新玩法"},
+    )
+    assert "已替换" in edited
+    assert "新玩法" in (des / "02-核心玩法.md").read_text(encoding="utf-8")
+
+
+def test_two_modes_sdk_and_cli(monkeypatch):
+    monkeypatch.delenv("GAMEAIHACK_USE_CLI", raising=False)
+    from gameaihack.agent.drivers import parse_via, resolve_driver
+    from gameaihack.agent.drivers.grok import GrokDriver
+    from gameaihack.agent.drivers.codex import CodexDriver
+    from gameaihack.agent.sdk import SdkDriver
+
+    assert parse_via("sdk") == "sdk"
+    assert parse_via("agent") == "sdk"
+    assert parse_via(None) == "sdk"
+    assert isinstance(resolve_driver("sdk"), SdkDriver)
+    assert isinstance(resolve_driver("grok"), GrokDriver)
+    assert isinstance(resolve_driver("codex"), CodexDriver)
+    assert resolve_driver("grok").kind == "cli"
+    assert resolve_driver("sdk").kind == "sdk"
+
+
 def test_bind_file_writes_run_log(tmp_path: Path):
     from gameaihack.core.progress import bind_file, log, unbind
 
@@ -125,20 +258,23 @@ def test_parse_via_grok_codex_dsh():
     from gameaihack.agent.drivers import AgentError, parse_via, resolve_driver
     from gameaihack.agent.drivers.dsh import DshDriver
     from gameaihack.agent.drivers.grok import GrokDriver, grok_argv
-    from gameaihack.agent.drivers.codex import CodexDriver
+    from gameaihack.agent.sdk import SdkDriver
 
     assert parse_via("grok") == "grok"
     assert parse_via("codex-cli") == "codex"
     assert parse_via("deepseek") == "dsh"
+    assert parse_via("http") == "sdk"
     try:
-        parse_via("http")
+        parse_via("ftp")
     except AgentError:
         pass
     else:
-        raise AssertionError("http 不应是合法通道")
+        raise AssertionError("ftp 不应是合法通道")
+    assert isinstance(resolve_driver("sdk"), SdkDriver)
     assert isinstance(resolve_driver("grok"), GrokDriver)
-    assert isinstance(resolve_driver("codex"), CodexDriver)
     assert isinstance(resolve_driver("dsh"), DshDriver)
+    assert resolve_driver("grok").via == "grok"
+    assert resolve_driver("codex").via == "codex"
     argv = grok_argv(
         binary="grok",
         model="grok-4.6",
@@ -152,11 +288,22 @@ def test_parse_via_grok_codex_dsh():
     assert "--always-approve" in joined
     assert "--effort" in argv and "xhigh" in argv
     from gameaihack.agent.drivers.codex import CodexDriver, codex_argv
+    from gameaihack.agent.llm import LlmConfig
 
     cargv = codex_argv(binary="codex", model="gpt-5", cwd="/tmp/job")
     cjoin = " ".join(cargv)
     assert "model_reasoning_effort=" in cjoin
     assert "xhigh" in cjoin
+    assert "--sandbox" in cargv and "workspace-write" in cargv
+    assert "--full-auto" not in cargv
+    injected = LlmConfig(api_key="k", base_url="http://127.0.0.1:8080", model="grok-4.6", source="t")
+    iargv = codex_argv(binary="codex", model="grok-4.6", cwd="/tmp/job", cfg=injected)
+    ijoin = " ".join(iargv)
+    assert "model_provider=" in ijoin
+    assert "gameaihack" in ijoin
+    assert 'wire_api="chat"' in ijoin
+    assert "OPENAI_API_KEY" in ijoin
+    assert isinstance(resolve_driver("codex"), CodexDriver)
 
 
 def test_reset_output_keeps_art(tmp_path: Path):
@@ -343,6 +490,7 @@ def test_grok_driver_fake_popen(tmp_path: Path):
             self.stdin = io.StringIO()
             self.pid = 1
             FakePopen.seen = self.argv
+            FakePopen.env = kwargs.get("env")
 
         def poll(self):
             if self.stdout.tell() >= len(output):
@@ -363,6 +511,7 @@ def test_grok_driver_fake_popen(tmp_path: Path):
     result = drv.run(
         AgentRequest(job_dir=tmp_path, prompt="写策划", model="grok-4.6", on_line=notes.append)
     )
+    assert FakePopen.env is None
     assert result["ok"], result
     assert "写好了" in result["text"]
     assert any("read_file" in n for n in notes)
@@ -370,6 +519,19 @@ def test_grok_driver_fake_popen(tmp_path: Path):
     assert "--output-format" in FakePopen.seen
     isolate_job_workspace(tmp_path)
     assert (tmp_path / ".git").exists()
+
+    from gameaihack.agent.llm import LlmConfig
+
+    cfg = LlmConfig(api_key="sk-test", base_url="http://127.0.0.1:8080", model="grok-4.6", source="t")
+    result = drv.run(
+        AgentRequest(job_dir=tmp_path, prompt="写策划", model="grok-4.6"),
+        cfg=cfg,
+    )
+    assert result["ok"], result
+    assert FakePopen.env is not None
+    assert FakePopen.env.get("GROK_HOME")
+    assert FakePopen.env.get("XAI_API_KEY") == "sk-test"
+    assert (tmp_path / "raw" / "_cli_home" / "grok" / "config.toml").is_file()
 
 
 def test_codex_driver_fake_popen(tmp_path: Path):
@@ -387,6 +549,7 @@ def test_codex_driver_fake_popen(tmp_path: Path):
             self.stdin = io.StringIO()
             self.pid = 1
             FakePopen.seen = self.argv
+            FakePopen.env = kwargs.get("env")
 
         def poll(self):
             if self.stdout.tell() >= len(output):
@@ -407,6 +570,22 @@ def test_codex_driver_fake_popen(tmp_path: Path):
     assert result["ok"], result
     assert "exec" in FakePopen.seen
     assert "-C" in FakePopen.seen
+    assert "--sandbox" in FakePopen.seen
+    assert FakePopen.env is None
+
+    from gameaihack.agent.llm import LlmConfig
+
+    cfg = LlmConfig(api_key="sk-test", base_url="http://127.0.0.1:8080", model="grok-4.6", source="t")
+    result = drv.run(AgentRequest(job_dir=tmp_path, prompt="写策划", model="grok-4.6"), cfg=cfg)
+    assert result["ok"], result
+    joined = " ".join(FakePopen.seen)
+    assert "model_provider=" in joined
+    assert 'wire_api="chat"' in joined
+    assert FakePopen.env is not None
+    assert FakePopen.env.get("OPENAI_API_KEY") == "sk-test"
+    assert FakePopen.env.get("CODEX_HOME")
+    assert "fenno" not in (FakePopen.env.get("OPENAI_BASE_URL") or "")
+    assert (tmp_path / "raw" / "_cli_home" / "codex" / "config.toml").is_file()
 
 
 def test_default_ports_are_wired():
