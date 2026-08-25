@@ -306,6 +306,15 @@ def test_dsh_book_tasks_read_raw_and_art(tmp_path: Path):
     assert "第一局" in blob
     assert "图鉴" in blob
     assert "redbird.png" in blob
+    assert "这一关干什么" in blob
+    assert "原资源名" in blob
+    assert "不要写 关卡/第001章.md" in blob
+    assert "已迁移" in blob
+    assert "不要写 Unity 类名" in blob
+    assert "table:xxx" in blob
+    assert "TapTap Maker" in blob
+    assert "maker init" in blob
+    assert "自己的引擎" not in blob
     assert (tmp_path / "output" / "策划" / "_事实源.md").is_file()
     assert (tmp_path / "raw" / "清单" / "给策划.md").is_file()
     assert (tmp_path / "output" / "美术" / "清单" / "给策划.md").is_file()

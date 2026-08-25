@@ -6,6 +6,8 @@ import json
 import re
 from pathlib import Path
 
+from gameaihack.publish.level_book import resolve_levels, summarize_chapters, write_level_book
+
 CHAPTERS = [
     ("00-封面.md", "封面"),
     ("01-产品定位.md", "产品定位"),
@@ -23,7 +25,11 @@ CHAPTERS = [
 def write_gamebook(dest: Path, ir: dict, ctx: dict) -> None:
     dest.mkdir(parents=True, exist_ok=True)
     art = _Art(dest.parent / "美术")
-    meta = _Meta(dest, ir, ctx, art)
+    job_dir = Path(ctx["_job_dir"]) if ctx.get("_job_dir") else dest.parent.parent
+    resolved = resolve_levels(ir, job_dir)
+    ir_view = dict(ir)
+    ir_view["levels"] = resolved
+    meta = _Meta(dest, ir_view, ctx, art)
     writers = {
         "00-封面.md": _cover,
         "01-产品定位.md": _identity,
@@ -40,7 +46,7 @@ def write_gamebook(dest: Path, ir: dict, ctx: dict) -> None:
         (dest / fn).write_text(writers[fn](meta), encoding="utf-8")
     (dest / "README.md").write_text(_toc(meta), encoding="utf-8")
     _write_art_guides(dest / "图鉴", meta)
-    _write_level_book(dest / "关卡", meta)
+    write_level_book(dest / "关卡", ir_view, title=meta.title, job_dir=job_dir, levels=resolved)
     ai = dest / "ai" / "gdd.md"
     if ai.exists():
         (dest / "附录-agent详述.md").write_text(
@@ -143,8 +149,8 @@ def _toc(m: _Meta) -> str:
     lines = [
         f"# {m.title} · 策划稿\n",
         f"{m.pkg}  {m.version}\n",
-        "完整玩法由 agent 读 raw/ 和美术后写入。机器骨架只提供目录和关卡编号。\n",
-        "这份策划加上 [`../美术/`](../美术/)，用来用自己的引擎对照重做。\n",
+        "完整玩法由 agent 读 raw/ 和美术后写入。关卡表按第几关来写，不当资源清单。\n",
+        "这份策划在 TapTap Maker 工程里：上一级就是 `output/`，脚本在 `../scripts/`。\n",
         "| 文档 | 写什么 |",
         "|---|---|",
     ]
@@ -213,28 +219,23 @@ def _play(m: _Meta) -> str:
 
 
 def _levels(m: _Meta) -> str:
-    chapters: dict[int, int] = {}
-    for lv in m.levels:
-        ch = (lv.get("extra") or {}).get("chapter")
-        if ch is None:
-            continue
-        try:
-            chapters[int(ch)] = chapters.get(int(ch), 0) + 1
-        except (TypeError, ValueError):
-            pass
+    summaries = summarize_chapters(m.levels)
     themes = m.art.md(folder="场景", limit=4)
-    rows = ["| 章 | 关数 | 文档 |", "|---|---|---|"]
-    for ch in sorted(chapters):
-        rows.append(f"| 第 {ch} 章 | {chapters[ch]} | [关卡/第{ch:03d}章.md](关卡/第{ch:03d}章.md) |")
-    extra = f"\n{chr(10).join(rows)}\n" if chapters else "\n还没有章节索引。\n"
-    ch_bit = f"，约 **{m.n_ch}** 章" if m.n_ch else ""
+    rows = ["| 章 | 有几关 | 文档 |", "|---|---|---|"]
+    for row in summaries:
+        ch = row["chapter"]
+        rows.append(
+            f"| 第 {ch} 章 | {row['how_many']} | [关卡/第{ch:03d}章.md](关卡/第{ch:03d}章.md) |"
+        )
+    extra = f"\n{chr(10).join(rows)}\n" if summaries else "\n还没有章节索引。\n"
+    ch_bit = f"**{m.n_ch}** 章" if m.n_ch else "若干章"
     return f"""# 关卡设计
 
-已整理 **{m.n_lv}** 关{ch_bit}。
+按章做人话关卡表，见 [关卡/](关卡/)。一共 {ch_bit}。只看到章名的不要当成 1 关。
 
 {themes}
 {extra}
-每一章的写法由 agent 按本包内容补。几何和解法以 raw 里解出的为准。
+每一章写第几关、这一关干什么、通关后开哪一关。砖怎么摆以 raw 解出的为准；解不出就自己摆。
 """
 
 
@@ -303,63 +304,6 @@ def _ops(m: _Meta) -> str:
 
 活动、赛季、关卡投放节奏由 agent 根据本包的活动资源和章节结构来写。
 """
-
-
-def _write_level_book(dest: Path, m: _Meta) -> None:
-    dest.mkdir(parents=True, exist_ok=True)
-    by_ch: dict[int | str, list[dict]] = {}
-    ungrouped: list[dict] = []
-    for lv in m.levels:
-        ch = (lv.get("extra") or {}).get("chapter")
-        if ch is None:
-            ungrouped.append(lv)
-            continue
-        try:
-            key: int | str = int(ch)
-        except (TypeError, ValueError):
-            key = str(ch)
-        by_ch.setdefault(key, []).append(lv)
-    toc = [
-        f"# 关卡策划 · {m.title}\n",
-        "按章列出本包索引到的关。每一章的玩法说明由 agent 补全。\n",
-        "| 章 | 关数 | 文档 |",
-        "|---|---|---|",
-    ]
-    ch_keys = sorted(k for k in by_ch if isinstance(k, int)) + sorted(
-        k for k in by_ch if not isinstance(k, int)
-    )
-    for ch in ch_keys:
-        items = sorted(
-            by_ch[ch],
-            key=lambda x: int((x.get("extra") or {}).get("level") or x.get("index") or 0),
-        )
-        fn = f"第{int(ch):03d}章.md" if isinstance(ch, int) else f"{ch}.md"
-        toc.append(f"| {ch} | {len(items)} | [{fn}]({fn}) |")
-        (dest / fn).write_text(_chapter_doc(m, ch, items), encoding="utf-8")
-    if ungrouped:
-        toc.append(f"| — | {len(ungrouped)} | [其他.md](其他.md) |")
-        (dest / "其他.md").write_text(_chapter_doc(m, "其他", ungrouped), encoding="utf-8")
-    toc.append("")
-    (dest / "README.md").write_text("\n".join(toc), encoding="utf-8")
-
-
-def _chapter_doc(m: _Meta, ch: int | str, items: list[dict]) -> str:
-    title = f"第 {ch} 章" if isinstance(ch, int) else str(ch)
-    pic = m.art.md(folder="场景", limit=2, prefix="../../美术") or m.art.md(limit=2, prefix="../../美术")
-    lines = [
-        f"# {title} · {m.title}\n",
-        f"本章索引到 **{len(items)}** 关。\n",
-        pic,
-        "## 关卡表\n",
-        "| 关卡 | 编号 |",
-        "|---|---|",
-    ]
-    for i, lv in enumerate(items, 1):
-        extra = lv.get("extra") or {}
-        num = extra.get("level") or i
-        lines.append(f"| {num} | `{lv.get('id')}` |")
-    lines.append("\n本章目标、房间、胜负由 agent 根据 raw 补。\n")
-    return "\n".join(lines)
 
 
 def _write_art_guides(dest: Path, m: _Meta) -> None:

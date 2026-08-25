@@ -149,7 +149,7 @@ def _job_index_md(job_dir: Path, ir: dict) -> str:
 1. 读本清单和 [output/策划/_事实源.md](output/策划/_事实源.md)
 2. 按 [output/策划/制作顺序.md](output/策划/制作顺序.md) 开工
 3. 用 [output/策划/02-核心玩法.md](output/策划/02-核心玩法.md) 做第一局
-4. 美术只对照 [output/美术/](output/美术/)，按 [清单/程序.md](清单/程序.md) 的目录在自己的引擎里重建
+4. 美术只对照 [output/美术/](output/美术/)；上架图生成到 [output/assets/image/](output/assets/image/)
 5. 不要重打包原 APK
 """
 

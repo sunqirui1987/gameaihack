@@ -1,46 +1,27 @@
 # AGENTS.md
 
-这个目录是 `{{ package_name }}` 的**游戏工程**（策划 + 美术）。原始解包在 `../raw/`，不要当事实源去翻 so/apk。
+这是 `{{ package_name }}` 的 **TapTap Maker** 工程（分析产出的 `output/`）。
 
-给人和 AI 读规格、对照美术、按文档用自己的引擎重做一版玩法相同的**独立作品**。不是原厂源码，不能拿原包重打包上架。
+用 Cindy 打开本目录。走 Maker 插件做游戏，不要重打包原 APK，不要当普通 Git 仓库提交。
 
 ## 目录
 
 ```
 ./
-  AGENTS.md          ← 你在这里
-  README.md
-  COVER.md           一页纸结论
-  策划/              策划文档（Markdown）
-    架构.md
-    gdd/             全书
-    ai/              读原始文件的模型分析
-    关卡/
-    系统/
-  美术/              美术资源（图 / 音 / 字 / 视频）
-    catalog.md
-    textures/ audio/ fonts/ video/ maps/
-  data/              机器可读（写代码 ingest）
-    game.ir.json     单一事实源
-    claims.json
-    levels/  tables/  specs/  configs/  scripts/
-  diagrams/          mermaid 循环图
-  html/              浏览器预览（可选）
+  AGENTS.md
+  scripts/main.lua     第一局
+  assets/image/        上架图
+  策划/                说明书
+  美术/                对照图
+  engine-docs/         Maker 引擎知识（分析用户代码时忽略）
 ```
 
-`../raw/` 是解包工作区，**不要发给别人**。
+`../raw/` 是解包，**不要发给别人**。
 
 ## 规则
 
 1. 先读 `策划/00-封面.md`、`策划/02-核心玩法.md`、`策划/图鉴/`。
-2. 策划说怎么做，图鉴把 PNG 对到系统上。图在 `美术/`。
-3. 美术版权归原权利人。只作对照重做，不要当商用素材二次上架。
-4. 禁止生成盗版客户端、外挂、破解器、重打包 APK。
-5. 引擎 {{ engine }} / {{ script_backend }}，品类 {{ genre }}。重做时换你自己的引擎。
-
-## 建议
-
-- 复刻玩法：`data/specs/identity.json` + `策划/gdd/01*` + `策划/gdd/02*` + `diagrams/loop-session.mmd`
-- 复刻数值：`data/tables/` + `策划/gdd/05*` + `策划/gdd/06*`
-- 接美术：`美术/catalog.md`
-- 广告 SDK / Firebase 出现在 `data/configs` 或 `data/scripts` 时忽略
+2. 在 `scripts/` 实现；预览用 `maker_build`。
+3. `美术/` 只对照。上架图生成到 `assets/image/`。
+4. 禁止盗版客户端、外挂、重打包 APK。
+5. Lua 不要用 `os.clock()`、`io.*`。

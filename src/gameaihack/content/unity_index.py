@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from pathlib import Path
 
-CHAPTER_DIR_RE = re.compile(r"Chapter(\d{2,3})[/\\]Levels", re.I)
-LEVEL_IN_CHAPTER_RE = re.compile(
-    r"Chapter(\d{2,3})[/\\]Levels[/\\]Level(\d{2,3})\.asset",
+TOKEN_RE = re.compile(
+    r"Chapter(\d{2,3})[/\\]Levels(?:[/\\]Level(\d{2,3})\.asset)?"
+    r"|Level(\d{2,3})\.asset",
     re.I,
 )
 
@@ -17,7 +18,11 @@ def _ascii_strings(data: bytes, min_len: int = 8) -> list[str]:
 
 
 def index_unity_levels(merged: Path) -> list[dict]:
-    """从 Addressables catalog / bundle 文件名抽出章节-关卡索引（L0）。"""
+    """从 Addressables catalog / bundle 抽出章节-关卡索引（L0）。
+
+    catalog 里常见两种写法：整段路径，或先 `Chapter001/Levels` 再跟 `Level001.asset`。
+    章内关号按文件名排序后从 1 起算，不把跨章连号（Level016）当成第 16 关。
+    """
     blobs: list[tuple[str, bytes]] = []
     catalog = merged / "assets/aa/catalog.bin"
     if catalog.exists() and catalog.stat().st_size < 20_000_000:
@@ -31,37 +36,36 @@ def index_unity_levels(merged: Path) -> list[dict]:
     chapters: set[int] = set()
     evidence_path = "assets/aa/catalog.bin"
     for path, data in blobs:
-        text = "\n".join(_ascii_strings(data))
-        for m in LEVEL_IN_CHAPTER_RE.finditer(text):
-            ch, lv = int(m.group(1)), int(m.group(2))
-            if 1 <= ch <= 200 and 1 <= lv <= 80:
-                pairs[(ch, lv)] = path
-                chapters.add(ch)
-        for m in CHAPTER_DIR_RE.finditer(text):
-            ch = int(m.group(1))
-            if 1 <= ch <= 200:
-                chapters.add(ch)
+        _collect_pairs(_ascii_strings(data), path, pairs, chapters)
         evidence_path = path
 
     levels: list[dict] = []
     if pairs:
-        for (ch, lv), src in sorted(pairs.items()):
-            levels.append(
-                _lvl(
-                    f"ch{ch:03d}_lv{lv:03d}",
-                    ch * 1000 + lv,
-                    f"Chapter {ch} · Level {lv}",
-                    src,
-                    extra={"chapter": ch, "level": lv},
+        by_ch: dict[int, list[int]] = defaultdict(list)
+        for ch, asset_lv in pairs:
+            by_ch[ch].append(asset_lv)
+        for ch, asset_lvs in sorted(by_ch.items()):
+            for seq, asset_lv in enumerate(sorted(set(asset_lvs)), 1):
+                src = pairs[(ch, asset_lv)]
+                extra = {"chapter": ch, "level": seq}
+                if asset_lv != seq:
+                    extra["asset_level"] = asset_lv
+                levels.append(
+                    _lvl(
+                        f"ch{ch:03d}_lv{seq:03d}",
+                        ch * 1000 + seq,
+                        f"第{ch}章第{seq}关",
+                        src,
+                        extra=extra,
+                    )
                 )
-            )
-        have = {ch for ch, _ in pairs}
+        have = set(by_ch)
         for ch in sorted(chapters - have):
             levels.append(
                 _lvl(
                     f"chapter_{ch:03d}",
                     ch * 1000,
-                    f"Chapter {ch}",
+                    f"第{ch}章",
                     evidence_path,
                     extra={"chapter": ch},
                 )
@@ -71,13 +75,12 @@ def index_unity_levels(merged: Path) -> list[dict]:
             levels.append(
                 _lvl(
                     f"chapter_{ch:03d}",
-                    ch,
-                    f"Chapter {ch}",
+                    ch * 1000,
+                    f"第{ch}章",
                     evidence_path,
                     extra={"chapter": ch},
                 )
             )
-    # bundle 文件名兜底
     if not levels:
         from gameaihack.core.fs import iter_files
 
@@ -88,6 +91,45 @@ def index_unity_levels(merged: Path) -> list[dict]:
             ):
                 levels.append(_lvl(p.stem[:40], 0, p.stem, p.as_posix(), extra={"bundle": p.name}))
     return levels
+
+
+def _collect_pairs(
+    strings: list[str],
+    path: str,
+    pairs: dict[tuple[int, int], str],
+    chapters: set[int],
+) -> None:
+    current: int | None = None
+    pending: int | None = None
+    for s in strings:
+        for m in TOKEN_RE.finditer(s):
+            ch_s, full_lv, loose_lv = m.group(1), m.group(2), m.group(3)
+            if ch_s:
+                ch = int(ch_s)
+                if not (1 <= ch <= 200):
+                    continue
+                chapters.add(ch)
+                current = ch
+                if full_lv:
+                    lv = int(full_lv)
+                    if 1 <= lv <= 80:
+                        pairs[(ch, lv)] = path
+                    pending = None
+                    continue
+                if pending is not None:
+                    pairs[(ch, pending)] = path
+                    pending = None
+                continue
+            if not loose_lv:
+                continue
+            lv = int(loose_lv)
+            if not (1 <= lv <= 80):
+                continue
+            if current is not None:
+                pairs[(current, lv)] = path
+                pending = None
+            else:
+                pending = lv
 
 
 def _lvl(lid: str, index: int, name: str, src: str, extra: dict) -> dict:

@@ -19,3 +19,24 @@ build/
 .DS_Store
 logs/*
 !logs/.gitkeep
+
+# >>> TapTap Maker AI dev kit (local only) >>>
+.DS_Store
+.claude/
+.cli/
+.codex/
+.cursor/
+.emmylua/
+.gemini/
+.installer/
+.maker/
+AGENTS.md
+CLAUDE.md
+engine-docs/
+examples/
+schemas/
+skills/
+templates/
+tools/
+urhox-libs/
+# <<< TapTap Maker AI dev kit (local only) <<<

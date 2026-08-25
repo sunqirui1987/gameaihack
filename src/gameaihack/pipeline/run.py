@@ -541,6 +541,10 @@ def _run_job(
         art_n = (snap.get("art") or {}).get("png") or 0
         job.append_event("report", True, f"复刻包已封口，贴图 {art_n}")
         _progress(f"[8/8] 复刻包完成  贴图 {art_n}  → {job.dir / 'output' / '复刻说明.md'}")
+        from gameaihack.publish.maker import emit_maker_project
+
+        mk = emit_maker_project(job.dir, ir)
+        _progress(f"[8/8] Maker 工程 {mk['path']}  init={'ok' if mk.get('init') else '骨架'}")
 
     job.write_manifest(
         finished_at=utc_now().isoformat(),

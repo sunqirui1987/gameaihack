@@ -10,6 +10,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from gameaihack.publish.gamebook import write_gamebook
+from gameaihack.publish.level_book import tidy_design, write_level_book
 from gameaihack.core.layout import (
     art_dir,
     design_dir,
@@ -48,7 +49,7 @@ def write_ai_projects(
 ) -> tuple[Path, Path]:
     """写出 output/（策划稿 + 美术）。raw/ 保持不动。
 
-    overwrite_design=False 时保留 agent 已经写好的策划，只补美术清单和根 README。
+    overwrite_design=False 时保留 agent 已经写好的策划，只补美术清单、人话关卡表和根 README。
     """
     migrate_game_to_output(job_dir)
     game = game_dir(job_dir)
@@ -81,9 +82,18 @@ def write_ai_projects(
         )
     ctx = dict(ctx)
     ctx["_design_dir"] = str(design)
+    ctx["_job_dir"] = str(job_dir)
     if overwrite_design:
         _write_design(job_dir, design, ir, ctx)
         write_gamebook(design, ir, ctx)
+    else:
+        write_level_book(
+            design / "关卡",
+            ir,
+            title=str(ctx.get("package_name") or job_dir.name),
+            job_dir=job_dir,
+        )
+    tidy_design(design)
     _write_data_files(job_dir, ir, ctx, data_root=game / "data")
     _write_art_catalog(art, ir, copied_art)
     _write_root(job_dir, ir, ctx, n_files=len(copied_art), dsh_final=not overwrite_design)

@@ -84,7 +84,7 @@ def _remake_verdict(n_png: int, chapters: list[str], n_lv: int, l2: int, gallery
         can.append("部分关卡有几何，可对照摆关")
     else:
         need.append("关卡几何（坐标/布局）——当前只有编号")
-    need.append("数值、动画、音效、物理参数需在自己的引擎里重做")
+    need.append("数值、动画、音效、物理参数在 TapTap Maker 里自定")
     return {
         "can": can,
         "need": need,
@@ -104,12 +104,13 @@ def seal_kit(job_dir: Path, ir: dict) -> dict:
     (job_dir / "README.md").write_text(
         f"# {pkg}\n\n"
         "这是一份**新游戏制作材料包**。先打开 **[清单.md](清单.md)**。\n\n"
-        "用策划当制作说明书，用美术当对照图，在自己的引擎里重做。不要重打包原 APK。\n\n"
+        "用 Cindy 打开 **[output/](output/)**（TapTap Maker 工程），按策划做新游戏。不要重打包原 APK。\n\n"
         "| 目录 | 是什么 |\n|---|---|\n"
-        "| [清单.md](清单.md) | **总清单**（包名下一份完整索引） |\n"
-        "| [清单/](清单/) | raw / 美术 / 程序 / 事实源 |\n"
+        "| [清单.md](清单.md) | **总清单** |\n"
         "| [raw/](raw/) | 解包，不外发 |\n"
-        "| [output/策划/](output/策划/) | 制作说明书 |\n"
+        "| [output/](output/) | **TapTap Maker 工程**（用 Cindy 打开这个目录） |\n"
+        "| [output/策划/](output/策划/) | 说明书 |\n"
+        "| [output/scripts/](output/scripts/) | Lua 入口 |\n"
         "| [output/美术/](output/美术/) | 对照图 |\n"
         "| [run.log](run.log) | 运行日志 |\n",
         encoding="utf-8",
@@ -130,7 +131,7 @@ def _guide_md(job_dir: Path, ir: dict, snap: dict) -> str:
     order = (design_dir(job_dir) / "制作顺序.md").is_file()
     return f"""# 复刻说明 · {pkg}
 
-这是**制作说明书 + 对照图**。用自己的引擎做一款玩法相同的新游戏。不要重打包原 APK。美术只当样子。
+这是 **TapTap Maker 工程**（本目录）。用 Cindy 打开这里，按策划做玩法相同的新游戏。不要重打包原 APK。美术只当对照。
 
 | | |
 |---|---|
@@ -152,13 +153,12 @@ def _guide_md(job_dir: Path, ir: dict, snap: dict) -> str:
 
 ## 建议制作顺序
 
-1. [策划/_事实源.md](策划/_事实源.md)（raw 清单 + 美术清单，策划按这个写）
-2. [策划/制作顺序.md](策划/制作顺序.md)（没有就先看 README）
-3. [策划/02-核心玩法.md](策划/02-核心玩法.md) 做出第一局
-3. [策划/图鉴/](策划/图鉴/) 把 PNG 对到角色、界面、场景
-4. [策划/07-新手-UI-社交.md](策划/07-新手-UI-社交.md) 搭大厅和屏幕流
-5. [策划/关卡/](策划/关卡/) 按编号排主线；没有几何的关只做节奏
-6. 成长、经济、活动按 04 / 05 / 06 补
+1. 安装 MCP：`npx -y @taptap/maker install --ide codex,cursor,claude`
+2. 本目录若还没有 `.project`：`npx -y @taptap/maker init`
+3. [策划/02-核心玩法.md](策划/02-核心玩法.md) 在 `scripts/main.lua` 做第一局，`maker_build` 预览
+4. [策划/图鉴/](策划/图鉴/) 对照，图生成到 `assets/image/`
+5. [策划/关卡/](策划/关卡/) 按第几关加关
+6. 成长、经济按 04 / 05 / 06，第一局先不做
 
 完整度机器记录：[完整度.json](完整度.json)。
 """

@@ -24,7 +24,11 @@ from gameaihack.content.ir import validate_ir
 from gameaihack.publish.report import render_deliverable
 from gameaihack.publish.share import ShareError, share_job
 
-app = typer.Typer(add_completion=False, no_args_is_help=True, help="游戏复刻材料包：抽出美术，agent 写策划")
+app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    help="分析游戏包，把 output/ 写成 TapTap Maker 工程：策划 + 对照美术 + scripts/",
+)
 
 EXIT_USAGE = 2
 EXIT_INGEST = 3
@@ -203,12 +207,33 @@ def analyze_cmd(
         _die(str(e), EXIT_DOCTOR)
     except ValueError as e:
         _die(str(e), EXIT_SCHEMA)
-    typer.echo(f"复刻包：{job_dir / 'output'}")
-    typer.echo(f"  说明：{job_dir / 'output' / '复刻说明.md'}")
+    typer.echo(f"Maker 工程：{job_dir / 'output'}")
+    typer.echo("  用 Cindy 打开上面这个目录。")
+    typer.echo("  未装 MCP 时先：npx -y @taptap/maker install --ide codex,cursor,claude")
+    typer.echo("  若还没有 .project：在该目录执行  npx -y @taptap/maker init")
     typer.echo(f"  策划：{job_dir / 'output' / '策划'}")
-    typer.echo(f"  美术：{job_dir / 'output' / '美术'}")
+    typer.echo(f"  脚本：{job_dir / 'output' / 'scripts' / 'main.lua'}")
     typer.echo(f"  日志：{job_dir / 'run.log'}")
     typer.echo("发给别人：gameaihack share <该目录> --to ./结果.zip")
+
+
+@app.command("maker")
+def maker_cmd(job_dir: Path = typer.Argument(..., exists=True, path_type=Path)) -> None:
+    """把已有 job 的 output/ 写成 TapTap Maker 工程（目录结构 + MCP 说明）。"""
+    from gameaihack.core.layout import ir_dir
+    from gameaihack.publish.maker import emit_maker_project
+
+    ir_path = ir_dir(job_dir) / "game.ir.json"
+    ir = {}
+    if ir_path.is_file():
+        try:
+            ir = json.loads(ir_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            ir = {}
+    mk = emit_maker_project(job_dir, ir if isinstance(ir, dict) else {})
+    typer.echo(f"Maker 工程：{mk['path']}")
+    typer.echo(f"  init：{'ok' if mk.get('init') else mk.get('note') or '骨架'}")
+    typer.echo(f"  MCP：{mk.get('install')}")
 
 
 @app.command("report")

@@ -44,8 +44,30 @@ def migrate_game_to_output(job_dir: Path) -> Path:
     return out
 
 
-def reset_output(job_dir: Path, *, keep: tuple[str, ...] = ("美术",)) -> Path:
-    """每次重跑清空 output/。默认只留已抽出的美术（重抽很慢）；策划/说明全部删掉。"""
+# output/ 是 TapTap Maker 工程。重跑时这些目录要留（init 很慢）。
+MAKER_KEEP = (
+    "美术",
+    "assets",
+    "scripts",
+    "engine-docs",
+    "examples",
+    "templates",
+    "urhox-libs",
+    "schemas",
+    "tools",
+    ".project",
+    ".emmylua",
+    ".claude",
+    ".codex",
+    ".cursor",
+    ".gemini",
+)
+
+
+def reset_output(job_dir: Path, *, keep: tuple[str, ...] | None = None) -> Path:
+    """每次重跑清空 output/。默认留美术和已 init 的 Maker 工程目录；策划/说明全部删掉。"""
+    if keep is None:
+        keep = MAKER_KEEP
     out = output_dir(job_dir)
     keep_set = set(keep)
     if out.is_dir():

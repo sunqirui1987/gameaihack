@@ -154,7 +154,7 @@ class DesignAgent(Protocol):
 @runtime_checkable
 class Publisher(Protocol):
     def render(self, job_dir: Path, ir: dict, *, thumbs_only: bool, overwrite_design: bool) -> None:
-        """写 output 骨架或收口（美术清单、data）。overwrite_design=False 时不覆盖 agent 策划。"""
+        """写 output 骨架或收口（美术清单、data）。overwrite_design=False 时不覆盖 agent 策划正文，但会重写人话关卡表。"""
 
     def harvest(self, job_dir: Path) -> int:
         """把散落的策划收口到 output/策划。"""
