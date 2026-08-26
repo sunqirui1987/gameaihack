@@ -64,7 +64,7 @@ class DefaultArtRipper:
 
 
 class LlmDesignAgent:
-    """读 raw/ 和 output/美术/，写 output/策划/。默认 DeepSeek Harness SDK。"""
+    """提取策划与美术，再用 Maker 做成玩法一模一样的新游戏。"""
 
     def require(self, via: str = "sdk") -> Any:
         from gameaihack.agent.drivers import resolve_driver
@@ -75,7 +75,7 @@ class LlmDesignAgent:
         return cfg
 
     def analyze(self, job_dir: Path, ir: dict, cfg: Any | None = None, via: str = "sdk") -> dict:
-        from gameaihack.agent.book import run_ai_analysis
+        from gameaihack.agent.run import run_ai_analysis
 
         return run_ai_analysis(job_dir, ir, cfg=cfg, via=via)
 
@@ -84,20 +84,18 @@ DshDesignAgent = LlmDesignAgent
 
 
 class DefaultPublisher:
-    def render(self, job_dir: Path, ir: dict, *, thumbs_only: bool, overwrite_design: bool) -> None:
-        from gameaihack.publish.report import render_deliverable
-
-        render_deliverable(job_dir, ir, thumbs_only=thumbs_only, overwrite_design=overwrite_design)
-
     def harvest(self, job_dir: Path) -> int:
-        from gameaihack.publish.projects import harvest_dsh
+        from gameaihack.publish.kit import harvest_design
 
-        return harvest_dsh(job_dir)
+        return harvest_design(job_dir)
 
     def seal(self, job_dir: Path, ir: dict) -> dict:
         from gameaihack.publish.kit import seal_kit
+        from gameaihack.publish.maker import emit_maker_project
 
-        return seal_kit(job_dir, ir)
+        snap = seal_kit(job_dir, ir)
+        emit_maker_project(job_dir, ir)
+        return snap
 
 
 def default_ports() -> dict:

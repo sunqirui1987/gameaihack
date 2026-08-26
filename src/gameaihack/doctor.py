@@ -50,15 +50,16 @@ def run_doctor() -> tuple[list[Check], bool]:
         ("adb", False, "deep 模式 pull 缓存"),
         ("frida", False, "deep 明文 dump（可选）"),
         ("docker", False, "推荐分发方式"),
+        ("npx", False, "写出 TapTap Maker 工程时执行 init"),
         ("gplaydl", False, "按包名从 Play 下载（需 gplaydl link）"),
     ):
         names = (exe, "il2cppdumper") if exe == "Il2CppDumper" else (exe,)
         path = which_exe(*names)
         checks.append(Check(exe, bool(path), req, path or why))
 
-    from gameaihack.agent.dsh import dsh_argv
-    from gameaihack.agent.drivers.grok import which_grok
     from gameaihack.agent.drivers.codex import which_codex
+    from gameaihack.agent.drivers.dsh import dsh_argv
+    from gameaihack.agent.drivers.grok import which_grok
 
     grok = which_grok()
     checks.append(Check("grok-cli", bool(grok), False, grok or "可选 --via grok（本机 CLI）"))
@@ -71,7 +72,7 @@ def run_doctor() -> tuple[list[Check], bool]:
     try:
         import deepseek_harness  # noqa: F401
 
-        from gameaihack.agent.sdk import resolve_runtime_bin
+        from gameaihack.agent.drivers.sdk import resolve_runtime_bin
 
         runtime = resolve_runtime_bin()
         if runtime:

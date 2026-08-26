@@ -11,9 +11,9 @@ import os
 import time
 from pathlib import Path
 
-from gameaihack.agent.dsh import PERSONA
 from gameaihack.agent.drivers.types import AgentError, AgentRequest
 from gameaihack.agent.llm import LlmConfig, resolve_llm
+from gameaihack.agent.prompts import PERSONA
 from gameaihack.core.progress import stream
 
 INSTALL = (
@@ -25,7 +25,7 @@ INSTALL = (
 
 
 def bundled_cordis() -> Path:
-    path = Path(__file__).resolve().parents[1] / "data" / "dsh.cordis.yml"
+    path = Path(__file__).resolve().parents[2] / "data" / "dsh.cordis.yml"
     if not path.is_file():
         raise AgentError(f"找不到 DSH cordis：{path}")
     return path
@@ -85,7 +85,7 @@ def _emit_note(note, publish) -> None:
     if method == "session.event":
         ev = payload.get("event")
         if isinstance(ev, dict):
-            from gameaihack.agent.dsh import _format_session_event
+            from gameaihack.agent.drivers.dsh import _format_session_event
 
             msg = _format_session_event(ev)
             if msg:
@@ -117,7 +117,7 @@ def harness_kwargs(req: AgentRequest, cfg: LlmConfig) -> dict:
     kwargs = {
         "provider": "deepseek-official",
         "model": model,
-        "cwd": str(job),
+        "cwd": str(Path(req.cwd).resolve() if getattr(req, "cwd", None) else job),
         "session_root": str(sessions.resolve()),
         "cordis": str(bundled_cordis()),
         "base_url": cfg.openai_base,

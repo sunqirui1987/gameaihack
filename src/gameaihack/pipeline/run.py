@@ -477,74 +477,51 @@ def _run_job(
     if ir is None:
         raise RuntimeError("IR 未生成")
     reset_output(job.dir)
-    _progress("[7/8] 已清空 output/策划 与说明，美术保留")
     from gameaihack.core.fs import count_by_suffix
+    from gameaihack.core.layout import assets_dir
 
-    art = art_dir(job.dir)
-    n_png = count_by_suffix(art, ".png") if art.is_dir() else 0
-    if reused_raw and n_png:
-        _progress(f"[7/8] 复用 output/美术 {n_png} 张")
-        from gameaihack.art.manifest import write_manifest
-
-        write_manifest(art, ir)
-        _progress("[7/8] 已写 美术/清单")
-    else:
-        _progress("[7/8] 抽出游戏贴图，准备 output/ …")
+    image = assets_dir(job.dir) / "image"
+    n_png = count_by_suffix(image, ".png") if image.is_dir() else 0
+    if n_png == 0:
+        n_png = count_by_suffix(art_dir(job.dir), ".png") if art_dir(job.dir).is_dir() else 0
+    if n_png == 0:
+        _progress("[7/8] 提取美术 → output/assets/")
         try:
-            n_art = art_port.rip(job.dir, progress=_progress)
-            _progress(f"[7/8] 游戏贴图 {n_art} 张 → {art}")
+            n_png = art_port.rip(job.dir, progress=_progress)
+            _progress(f"[7/8] 美术 {n_png} → {assets_dir(job.dir)}")
         except Exception as e:  # noqa: BLE001
-            _progress(f"[7/8] 贴图抽出失败：{type(e).__name__}: {e}")
+            _progress(f"[7/8] 提取美术失败：{type(e).__name__}: {e}")
+    else:
+        _progress(f"[7/8] 已有美术 {n_png}")
     from gameaihack.content.facts import write_fact_source
 
     facts = write_fact_source(job.dir, ir)
-    _progress(f"[7/8] 事实源 {facts}（raw 清单 + 美术清单）")
+    _progress(f"[7/8] 事实源 {facts}")
 
-    pytest_run = bool(os.environ.get("PYTEST_CURRENT_TEST"))
-    if should_run("report", from_stage) and pytest_run:
-        publisher.render(job.dir, ir, thumbs_only=thumbs_only, overwrite_design=True)
-        _progress("[7/8] 测试模式：机器稿写入 output/")
-    elif should_run("report", from_stage):
-        _progress(f"[7/8] output 已清空，策划交给 {via} 从零写核心玩法")
-
-    agent_ok = False
-    _progress(f"[7/8] {via} 读 raw/ 与 output/美术，写 output/策划 …")
+    _progress(f"[7/8] {via} 写玩法 PRD，并在 Maker 里做成同一套游戏")
     if should_run("ai", from_stage):
         from gameaihack.agent.drivers import AgentError
 
-        if pytest_run:
-            ai = agent_port.analyze(job.dir, ir, cfg=None, via=via)
-            job.append_event("ai", True, f"测试模式，索引 {ai.get('files', 0)}")
-            _progress(f"[7/8] 测试跳过 {via}，索引 {ai.get('files', 0)}")
-        else:
-            cfg = agent_port.require(via)
-            ai = agent_port.analyze(job.dir, ir, cfg=cfg, via=via)
-            agent = ai.get("agent") or ai.get("dsh") or {}
-            if not agent.get("ok"):
-                raise AgentError(f"{via} 读 raw/ 写 output/ 失败：\n" + (agent.get("error") or "未知错误"))
-            agent_ok = True
-            job.append_event("ai", True, f"{via} 完成，文件 {ai.get('files', 0)}")
-            from gameaihack.content.facts import write_job_inventory
+        cfg = agent_port.require(via)
+        ai = agent_port.analyze(job.dir, ir, cfg=cfg, via=via)
+        agent = ai.get("agent") or ai.get("dsh") or {}
+        if not agent.get("ok"):
+            raise AgentError(f"{via} 提取策划并做成游戏失败：\n" + (agent.get("error") or "未知错误"))
+        job.append_event("ai", True, f"{via} 完成，文件 {ai.get('files', 0)}")
+        from gameaihack.content.facts import write_job_inventory
 
-            write_job_inventory(job.dir, ir)
-            _progress(f"[7/8] {via} 完成  清单 {job.dir / '清单.md'}")
+        write_job_inventory(job.dir, ir)
+        _progress(f"[7/8] {via} 完成  清单 {job.dir / '清单.md'}")
     else:
         job.append_event("ai", True, "跳过 AI")
 
-    _progress("[8/8] 收口 output/ …")
+    _progress("[8/8] 收口 Maker 工程 …")
     if should_run("report", from_stage):
         n_h = publisher.harvest(job.dir)
-        if agent_ok:
-            publisher.render(job.dir, ir, thumbs_only=thumbs_only, overwrite_design=False)
-            _progress(f"[8/8] 策划已是最终稿（另收 {n_h} 个文件）")
         snap = publisher.seal(job.dir, ir)
         art_n = (snap.get("art") or {}).get("png") or 0
-        job.append_event("report", True, f"复刻包已封口，贴图 {art_n}")
-        _progress(f"[8/8] 复刻包完成  贴图 {art_n}  → {job.dir / 'output' / '复刻说明.md'}")
-        from gameaihack.publish.maker import emit_maker_project
-
-        mk = emit_maker_project(job.dir, ir)
-        _progress(f"[8/8] Maker 工程 {mk['path']}  init={'ok' if mk.get('init') else '骨架'}")
+        job.append_event("report", True, f"已封口，贴图 {art_n}，收口策划 {n_h}")
+        _progress(f"[8/8] 策划+美术已提取；新游戏在 output/  贴图 {art_n}")
 
     job.write_manifest(
         finished_at=utc_now().isoformat(),

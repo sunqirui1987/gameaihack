@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gameaihack"
 version = "0.2.0"
-description = "给游戏包，产出复刻材料包：抽出美术 + agent 写策划"
+description = "提取游戏策划与美术，用 TapTap Maker 做成玩法一模一样的新游戏"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -21,7 +21,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
 manifest = ["pyaxmlparser>=0.3.31"]
 unity = ["UnityPy>=1.10", "Pillow>=10"]
 deep = ["frida-tools>=12"]
@@ -36,7 +35,3 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 gameaihack = ["templates/*", "data/*"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src", "."]

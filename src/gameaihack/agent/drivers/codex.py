@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from pathlib import Path
 
 from .grok import isolate_job_workspace
 from .process import iter_process_lines
@@ -29,7 +30,7 @@ def codex_argv(
 ) -> list[str]:
     argv = [binary, "exec", "--json", "--sandbox", "workspace-write", "-C", cwd]
     if cfg and getattr(cfg, "api_key", None):
-        from gameaihack.agent.harness import codex_provider_argv
+        from gameaihack.agent.drivers.harness import codex_provider_argv
 
         argv.extend(codex_provider_argv(cfg))
     if model:
@@ -60,12 +61,12 @@ class CodexDriver:
         return path
 
     def run(self, req: AgentRequest, *, cfg=None) -> dict:
-        from gameaihack.agent.harness import cli_home, inject_cli_env, prepare_codex_home
+        from gameaihack.agent.drivers.harness import cli_home, inject_cli_env, prepare_codex_home
         from gameaihack.core.progress import stream
 
         binary = self.binary if self.popen is not None else self.require(cfg)
         job_dir = req.job_dir.resolve()
-        cwd = job_dir
+        cwd = Path(req.cwd).resolve() if getattr(req, "cwd", None) else job_dir
         isolate_job_workspace(cwd)
         model = req.model or (cfg.model if cfg else "")
         env = None

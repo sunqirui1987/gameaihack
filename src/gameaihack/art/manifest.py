@@ -1,4 +1,4 @@
-"""美术目录的资源总清单：给程序导入、给美术对照、给策划嵌图。"""
+"""Maker 工程资源清单：贴图和音在 assets/，给 scripts 引用。"""
 
 from __future__ import annotations
 
@@ -10,31 +10,15 @@ from pathlib import Path
 
 from gameaihack.core.fs import iter_files
 
-SKIP_TOP = {"清单", "textures", "audio", "fonts", "maps", "video"}
-MEDIA = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".ogg", ".mp3", ".wav", ".m4a", ".mp4", ".webm", ".ttf", ".otf", ".fnt"}
+MEDIA = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".ogg", ".mp3", ".wav", ".m4a"}
 
 ROLE = {
-    "角色": "立绘 / 模型贴图 / 对战单位。程序按角色 id 引用，美术对照重绘。",
-    "服装": "换装、皮肤。子目录往往是套装名。",
-    "头像": "列表、个人页、结算用的小头像。",
-    "头像框": "头像外框、装饰。",
-    "界面": "HUD、弹窗、按钮、大厅。做新 UI 时按文件名对功能。",
-    "场景": "关卡背景、主题场景、环境道具。",
-    "关卡": "章节图、选关、进度。",
-    "特效": "命中、爆炸、拖尾。新引擎用自己的粒子，这里只对照。",
-    "道具": "消耗品、强化、宝箱。",
-    "礼包": "商店、内购、活动包。",
-    "奖励": "领奖、掉落展示。",
-    "赛季": "通行证、赛季皮肤。",
-    "公会": "公会、社交。",
-    "表情": "聊天表情。",
-    "加载": "闪屏、Loading、Logo。",
-    "字体": "点阵字、艺术字。新游戏尽量用自己的字库。",
-    "音频": "音效 / 短音乐。",
-    "视频": "过场、广告创意。",
-    "技术贴图": "法线、Mask、LUT。程序看，一般不用重绘成玩法图。",
-    "其他": "尚未归类。制作前先扫一遍，能归的再挪。",
-    "原始": "包内已是 png/ogg 的散文件，路径尽量保持原相对目录。",
+    "sprites": "场上会动的：玩家、抛体、目标、角色。Lua 里当 Sprite。",
+    "world": "地形、障碍、背景。做物理场和关卡摆放。",
+    "ui": "局内 HUD、按钮。不要拿去当商店图。",
+    "fx": "命中、爆炸、拖尾。",
+    "loose": "包里散落的 png。",
+    "audio": "音效。",
 }
 
 
@@ -50,9 +34,10 @@ def png_size(path: Path) -> tuple[int, int] | None:
     return int(w), int(h)
 
 
-def write_manifest(art: Path, ir: dict | None = None) -> dict:
-    art.mkdir(parents=True, exist_ok=True)
-    rows = _scan(art)
+def write_manifest(root: Path, ir: dict | None = None) -> dict:
+    """root 可以是 output/assets 或 output/美术。"""
+    root.mkdir(parents=True, exist_ok=True)
+    rows = _scan(root)
     by: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
         by[r["folder"]].append(r)
@@ -62,7 +47,7 @@ def write_manifest(art: Path, ir: dict | None = None) -> dict:
         "folders": {k: len(v) for k, v in sorted(by.items())},
         "bytes": sum(r["bytes"] for r in rows),
     }
-    dest = art / "清单"
+    dest = root / "清单"
     dest.mkdir(parents=True, exist_ok=True)
     (dest / "全部.json").write_text(
         json.dumps({"meta": snap, "files": rows}, ensure_ascii=False) + "\n",
@@ -73,172 +58,66 @@ def write_manifest(art: Path, ir: dict | None = None) -> dict:
         w.writeheader()
         for r in rows:
             w.writerow({k: r.get(k) if r.get(k) is not None else "" for k in w.fieldnames})
-    (dest / "总览.md").write_text(_overview_md(snap, by), encoding="utf-8")
-    (dest / "程序.md").write_text(_code_md(snap, by), encoding="utf-8")
-    (dest / "美术.md").write_text(_art_md(snap, by), encoding="utf-8")
-    (dest / "给策划.md").write_text(_design_md(snap, by), encoding="utf-8")
-    (art / "catalog.json").write_text(json.dumps(snap, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    (art / "catalog.md").write_text(
-        f"# 美术清单\n\n完整清单在 [清单/总览.md](清单/总览.md)。"
-        f"程序看 [清单/程序.md](清单/程序.md)，美术看 [清单/美术.md](清单/美术.md)。\n"
-        f"机器表：[清单/全部.csv](清单/全部.csv)。\n",
-        encoding="utf-8",
-    )
+    (dest / "给策划.md").write_text(_maker_md(snap, by, root), encoding="utf-8")
+    (dest / "程序.md").write_text(_maker_md(snap, by, root), encoding="utf-8")
+    (dest / "美术.md").write_text(_maker_md(snap, by, root), encoding="utf-8")
+    (dest / "总览.md").write_text(_maker_md(snap, by, root), encoding="utf-8")
+    (root / "catalog.json").write_text(json.dumps(snap, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return snap
 
 
-def _scan(art: Path) -> list[dict]:
+def _scan(root: Path) -> list[dict]:
     rows: list[dict] = []
-    for p in iter_files(art, skip_dirs={"清单"}):
+    for p in iter_files(root, skip_dirs={"清单"}):
         if p.name.startswith("."):
             continue
         suf = p.suffix.lower()
-        if suf not in MEDIA and suf != ".png":
-            if suf in {".md", ".json", ".txt", ".csv"}:
-                continue
-        try:
-            rel = p.relative_to(art).as_posix()
-            size = p.stat().st_size
-        except (ValueError, OSError):
+        if suf not in MEDIA:
             continue
-        parts = Path(rel).parts
-        folder = parts[0] if parts else "其他"
-        if folder in SKIP_TOP and folder not in ROLE:
-            folder = folder
+        try:
+            rel = p.relative_to(root).as_posix()
+            folder = rel.split("/", 1)[0]
+            if folder == "image" and "/" in rel:
+                rest = rel.split("/", 1)[1]
+                folder = rest.split("/", 1)[0]
+            st = p.stat()
+        except (OSError, ValueError):
+            continue
         wh = png_size(p) if suf == ".png" else None
         rows.append(
             {
                 "folder": folder,
                 "path": rel,
-                "ext": suf or "",
-                "bytes": size,
-                "width": wh[0] if wh else None,
-                "height": wh[1] if wh else None,
+                "ext": suf,
+                "bytes": st.st_size,
+                "width": wh[0] if wh else "",
+                "height": wh[1] if wh else "",
             }
         )
     rows.sort(key=lambda r: (r["folder"], r["path"]))
     return rows
 
 
-_NOISE = (
-    "ui_",
-    "_ui",
-    "button",
-    "btn_",
-    "atlas",
-    "mask",
-    "mainbg",
-    "container",
-    "shop",
-    "hatset",
-    "glow",
-)
-
-
-def _sample_rows(items: list[dict], n: int = 5) -> list[dict]:
-    """给策划的代表图：少 UI/按钮/图集，优先中等尺寸单图。"""
-
-    def score(row: dict) -> float:
-        name = Path(row.get("path") or "").name.lower()
-        pts = 0.0
-        w, h = int(row.get("width") or 0), int(row.get("height") or 0)
-        if 48 <= w <= 1024 and 48 <= h <= 1024:
-            pts += 4
-        if w and h:
-            pts += min((w * h) / 80_000, 5)
-        for token in _NOISE:
-            if token in name:
-                pts -= 5
-        return pts
-
-    return sorted(items, key=lambda r: (-score(r), r.get("path") or ""))[:n]
-
-
-def _design_md(snap: dict, by: dict) -> str:
-    pkg = snap.get("package") or ""
+def _maker_md(snap: dict, by: dict, root: Path) -> str:
+    name = snap.get("package") or ""
     lines = [
-        f"# 美术清单（给策划）· {pkg}\n",
-        "策划嵌图、图鉴、系统总表**只能用这些文件夹和代表文件**。不要发明目录。\n",
-        "| 目录 | 数量 | 用途 | 代表文件（嵌图用这些 path） |",
-        "|---|---:|---|---|",
+        f"# 反编译资源（Maker 用）· {name}\n",
+        f"共 {snap.get('total') or 0} 个文件。路径相对 `{root.name}/`。\n",
+        "在 `scripts/` 里引用：`assets/image/<桶>/...png`、`assets/audio/...`。\n",
+        "这些是从原包解出来给 **TapTap Maker 做同一套玩法** 用的，不是运营素材墙。\n",
+        "| 桶 | 数量 | 用途 |",
+        "|---|---:|---|",
     ]
-    for name, items in sorted(by.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-        samples = "、".join(f"`{x['path']}`" for x in _sample_rows(items, 5))
-        lines.append(f"| `{name}/` | {len(items)} | {ROLE.get(name, '待归类')} | {samples} |")
-    lines += [
-        "\n图鉴必须一篇对应一个目录，文件名与目录名相同，例如 `策划/图鉴/角色.md`。\n",
-        "引用：`![](../美术/角色/xxx.png)`，path 必须能在 [全部.csv](全部.csv) 里找到。\n",
-    ]
-    return "\n".join(lines)
-
-
-def _overview_md(snap: dict, by: dict) -> str:
-    pkg = snap.get("package") or ""
-    lines = [
-        f"# 资源总清单 · {pkg}\n",
-        "给**程序、美术、策划**用的同一份目录。图在上一级各文件夹，本文只索引。\n",
-        f"合计 **{snap['total']}** 个文件，约 **{snap['bytes'] / (1024 * 1024):.1f} MB**。\n",
-        "| 目录 | 数量 | 给谁 | 做什么 |",
-        "|---|---:|---|---|",
-    ]
-    for name, items in sorted(by.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-        who = "程序+美术" if name in {"界面", "角色", "服装", "场景"} else ("程序" if name == "技术贴图" else "美术+策划")
-        lines.append(f"| [`{name}/`](../{name}/) | {len(items)} | {who} | {ROLE.get(name, '待归类')} |")
-    lines += [
-        "\n## 怎么用\n",
-        "1. 程序：按 [程序.md](程序.md) 的目录当资源包结构，做新游戏时用自己的格式重新导入。",
-        "2. 美术：按 [美术.md](美术.md) 对照重绘，不要把这些 PNG 当上架素材。",
-        "3. 策划：图鉴和正文用 `![](../美术/<目录>/…)` 引用。",
-        "4. 全表：[全部.csv](全部.csv) 可进表格软件筛选。\n",
-    ]
-    return "\n".join(lines)
-
-
-def _code_md(snap: dict, by: dict) -> str:
-    lines = [
-        "# 程序用资源清单\n",
-        "新游戏不要直接加载这些 PNG 上架。当作**命名、分类、对照尺寸**的规格。\n",
-        "## 建议工程目录\n",
-        "```",
-        "Content/",
-    ]
-    for name in sorted(by):
-        lines.append(f"  {name}/")
-    lines += [
-        "```\n",
-        "## 各目录\n",
-    ]
-    for name, items in sorted(by.items()):
-        png = [x for x in items if x["ext"] == ".png"]
-        sizes = [(x["width"], x["height"]) for x in png if x.get("width")]
-        sample = "、".join(f"`{Path(x['path']).name}`" for x in items[:6])
-        dim = ""
-        if sizes:
-            dim = f"常见尺寸例如 {sizes[0][0]}×{sizes[0][1]}。"
-        lines.append(f"### {name}/ （{len(items)}）\n")
-        lines.append(f"{ROLE.get(name, '')} {dim}\n")
-        lines.append(f"例：{sample}\n")
-    lines.append("机器完整表见 [全部.csv](全部.csv)。\n")
-    return "\n".join(lines)
-
-
-def _art_md(snap: dict, by: dict) -> str:
-    lines = [
-        "# 美术用资源清单\n",
-        "按文件夹对照重绘。每张图在新游戏里用自己的分层文件重做，这里只看构图、色彩、UI 切图范围。\n",
-    ]
-    for name, items in sorted(by.items()):
-        if name == "技术贴图":
-            continue
-        lines.append(f"## {name}/ · {len(items)} 张\n")
-        lines.append(f"{ROLE.get(name, '')}\n")
-        lines.append("| 文件 | 尺寸 |")
-        lines.append("|---|---|")
-        for x in items[:40]:
-            dim = f"{x['width']}×{x['height']}" if x.get("width") else "—"
-            lines.append(f"| `{x['path']}` | {dim} |")
-        if len(items) > 40:
-            lines.append(f"\n其余 {len(items) - 40} 张见 CSV。\n")
-        else:
-            lines.append("")
-    return "\n".join(lines)
+    for folder, items in sorted(by.items(), key=lambda x: str(x[0])):
+        role = ROLE.get(folder) or "玩法资源"
+        lines.append(f"| `{folder}` | {len(items)} | {role} |")
+    lines.append("")
+    lines.append("## 各桶样例\n")
+    for folder, items in sorted(by.items(), key=lambda x: str(x[0])):
+        lines.append(f"### {folder}\n")
+        for r in items[:12]:
+            lines.append(f"- `{r['path']}`")
+        if len(items) > 12:
+            lines.append(f"- … 还有 {len(items) - 12} 个")
+        lines.append("")
+    return "\n".join(lines) + "\n"

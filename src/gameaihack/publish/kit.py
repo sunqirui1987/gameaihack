@@ -1,11 +1,36 @@
-"""制作材料包：策划是开工说明书，美术是对照图。"""
+"""封口：提取出的策划+美术，以及 Maker 里的新游戏。"""
 
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
-from gameaihack.core.layout import art_dir, design_dir, output_dir
+from gameaihack.core.layout import art_dir, assets_dir, design_dir, output_dir
+
+def harvest_design(job_dir: Path) -> int:
+    """把写到错误位置的策划 md 收到 output/策划。"""
+    dest = output_dir(job_dir) / "策划"
+    dest.mkdir(parents=True, exist_ok=True)
+    dest_r = dest.resolve()
+    n = 0
+    for src in (job_dir / "game" / "策划", job_dir / "策划"):
+        if not src.is_dir():
+            continue
+        try:
+            if src.resolve() == dest_r:
+                continue
+        except OSError:
+            continue
+        for f in src.rglob("*"):
+            if not f.is_file() or f.suffix.lower() not in {".md", ".txt"}:
+                continue
+            out = dest / f.relative_to(src)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, out)
+            n += 1
+    return n
+
 
 CORE_DESIGN = (
     "00-封面.md",
@@ -29,10 +54,14 @@ def inspect_kit(job_dir: Path, ir: dict | None = None) -> dict:
     ir = ir or {}
     from gameaihack.core.fs import count_by_suffix
 
-    n_png = count_by_suffix(art, ".png") if art.is_dir() else 0
+    image = assets_dir(job_dir) / "image"
+    n_png = count_by_suffix(image, ".png") if image.is_dir() else 0
+    if n_png == 0:
+        n_png = count_by_suffix(art, ".png") if art.is_dir() else 0
+    src = image if n_png else art
     folders = sorted(
         p.name
-        for p in (art.iterdir() if art.is_dir() else [])
+        for p in (src.iterdir() if src.is_dir() else [])
         if p.is_dir() and not p.name.startswith(".") and p.name not in {"textures", "audio", "fonts", "maps", "video", "清单"}
     )
     chapters = [fn for fn in CORE_DESIGN if (design / fn).is_file()]
@@ -65,26 +94,24 @@ def _remake_verdict(n_png: int, chapters: list[str], n_lv: int, l2: int, gallery
     can = []
     need = []
     if n_png:
-        can.append("画面对照（立绘 / UI / 场景贴图）")
+        can.append("美术已提取到 assets/image")
     else:
-        need.append("抽出游戏贴图")
+        need.append("提取美术（gameaihack art .）")
     if "02-核心玩法.md" in chapters:
-        can.append("按策划搭核心循环")
+        can.append("核心玩法 PRD 已有文件")
     else:
-        need.append("agent 写出核心玩法")
+        need.append("写出 02-核心玩法.md（游戏 PRD 设计稿）")
     if gallery:
-        can.append("按图鉴把图对到系统")
+        can.append("图鉴已对上提取的图")
     else:
-        need.append("图鉴（策划/图鉴）")
+        need.append("图鉴")
     if n_lv:
-        can.append(f"按 {n_lv} 关的编号排主线")
+        can.append(f"关卡表 {n_lv} 关")
     else:
-        need.append("关卡索引")
+        need.append("关卡表")
     if l2:
-        can.append("部分关卡有几何，可对照摆关")
-    else:
-        need.append("关卡几何（坐标/布局）——当前只有编号")
-    need.append("数值、动画、音效、物理参数在 TapTap Maker 里自定")
+        can.append("部分关有几何")
+    need.append("按 PRD 把同一套玩法写进 scripts/main.lua")
     return {
         "can": can,
         "need": need,
@@ -101,20 +128,9 @@ def seal_kit(job_dir: Path, ir: dict) -> dict:
     (out / "完整度.json").write_text(json.dumps(snap, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (out / "复刻说明.md").write_text(_guide_md(job_dir, ir, snap), encoding="utf-8")
     pkg = (ir.get("package") or {}).get("name") or job_dir.name
-    (job_dir / "README.md").write_text(
-        f"# {pkg}\n\n"
-        "这是一份**新游戏制作材料包**。先打开 **[清单.md](清单.md)**。\n\n"
-        "用 Cindy 打开 **[output/](output/)**（TapTap Maker 工程），按策划做新游戏。不要重打包原 APK。\n\n"
-        "| 目录 | 是什么 |\n|---|---|\n"
-        "| [清单.md](清单.md) | **总清单** |\n"
-        "| [raw/](raw/) | 解包，不外发 |\n"
-        "| [output/](output/) | **TapTap Maker 工程**（用 Cindy 打开这个目录） |\n"
-        "| [output/策划/](output/策划/) | 说明书 |\n"
-        "| [output/scripts/](output/scripts/) | Lua 入口 |\n"
-        "| [output/美术/](output/美术/) | 对照图 |\n"
-        "| [run.log](run.log) | 运行日志 |\n",
-        encoding="utf-8",
-    )
+    from gameaihack.agent.prompts.mission import job_readme
+
+    (job_dir / "README.md").write_text(job_readme(pkg), encoding="utf-8")
     return snap
 
 
@@ -129,9 +145,13 @@ def _guide_md(job_dir: Path, ir: dict, snap: dict) -> str:
     need = "\n".join(f"- {x}" for x in rem["need"])
     folders = "、".join(f"`{x}`" for x in art["folders"]) or "（尚未分类）"
     order = (design_dir(job_dir) / "制作顺序.md").is_file()
+    from gameaihack.agent.prompts.mission import GOAL, INIT_CMD, INSTALL_CMD
+
     return f"""# 复刻说明 · {pkg}
 
-这是 **TapTap Maker 工程**（本目录）。用 Cindy 打开这里，按策划做玩法相同的新游戏。不要重打包原 APK。美术只当对照。
+{GOAL}
+
+本目录就是 Maker 工程。不要重打包原 APK。
 
 | | |
 |---|---|
@@ -153,12 +173,11 @@ def _guide_md(job_dir: Path, ir: dict, snap: dict) -> str:
 
 ## 建议制作顺序
 
-1. 安装 MCP：`npx -y @taptap/maker install --ide codex,cursor,claude`
-2. 本目录若还没有 `.project`：`npx -y @taptap/maker init`
-3. [策划/02-核心玩法.md](策划/02-核心玩法.md) 在 `scripts/main.lua` 做第一局，`maker_build` 预览
-4. [策划/图鉴/](策划/图鉴/) 对照，图生成到 `assets/image/`
-5. [策划/关卡/](策划/关卡/) 按第几关加关
-6. 成长、经济按 04 / 05 / 06，第一局先不做
+1. 安装 MCP：`{INSTALL_CMD}`
+2. 本目录若还没有 `.project`：`{INIT_CMD}`
+3. 读 [策划/02-核心玩法.md](策划/02-核心玩法.md)（提取出的玩法）
+4. 用 [assets/image/](assets/image/) 的图，把同一套玩法写进 `scripts/main.lua`
+5. `maker_build` 预览。先做出能打完的一局，再按 [策划/关卡/](策划/关卡/) 加关
 
 完整度机器记录：[完整度.json](完整度.json)。
 """

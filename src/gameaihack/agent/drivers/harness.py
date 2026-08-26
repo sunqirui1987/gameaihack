@@ -1,6 +1,6 @@
 """本机 grok / Codex CLI 的环境注入：model / baseUrl / key，隔离官方账号目录。
 
-自建 agent 走 DeepSeek Harness Python SDK（sdk.py），不走这里。
+自建 agent 走 drivers/sdk.py，不走这里。
 """
 
 from __future__ import annotations

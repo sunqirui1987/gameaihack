@@ -9,11 +9,15 @@ from gameaihack.core.layout import art_dir, design_dir, ir_dir
 from gameaihack.publish.kit import CORE_DESIGN
 
 GALLERY_OPTIONAL = {"技术贴图", "原始"}
+# 不卡商业化。核心玩法必须写够，否则不算复制出玩法。
+SKIP_DESIGN = {"05-经济与商业化.md"}
 MIN_CORE = {
-    "02-核心玩法.md": 300,
+    "02-核心玩法.md": 5000,
+    "03-关卡设计.md": 400,
     "制作顺序.md": 80,
-    "README.md": 40,
+    "README.md": 80,
 }
+MIN_LEVELS = 80
 MIN_DEFAULT = 80
 
 
@@ -37,6 +41,8 @@ def missing_design(job_dir: Path) -> list[str]:
     design = design_dir(job_dir)
     miss: list[str] = []
     for name in CORE_DESIGN:
+        if name in SKIP_DESIGN:
+            continue
         n = _text_len(design / name)
         need = MIN_CORE.get(name, MIN_DEFAULT)
         if n < need:
@@ -46,6 +52,15 @@ def missing_design(job_dir: Path) -> list[str]:
         need = MIN_CORE[name]
         if n < need:
             miss.append(f"策划/{name}（{n} 字，至少 {need}）")
+    n_lv = _text_len(design / "关卡" / "README.md")
+    if n_lv < MIN_LEVELS:
+        miss.append(f"策划/关卡/README.md（{n_lv} 字，至少 {MIN_LEVELS}）")
+    play = (design / "02-核心玩法.md").read_text(encoding="utf-8", errors="replace") if (design / "02-核心玩法.md").is_file() else ""
+    from gameaihack.agent.prompts.mission import PRD_NEEDLES
+
+    for label, needles in PRD_NEEDLES:
+        if not any(n in play for n in needles):
+            miss.append(f"策划/02-核心玩法.md 还不是 PRD：缺「{label}」")
     gallery = design / "图鉴"
     for folder in art_gallery_folders(job_dir):
         path = gallery / f"{folder}.md"
@@ -89,10 +104,34 @@ def protected_violations(job_dir: Path, snap: dict) -> list[str]:
     return bad
 
 
+def missing_maker_game(job_dir: Path) -> list[str]:
+    """成品必须是 Maker 里能玩的同一套核心玩法，不是只有文档。"""
+    from gameaihack.core.fs import count_by_suffix
+    from gameaihack.core.layout import assets_dir, output_dir
+
+    miss: list[str] = []
+    image = assets_dir(job_dir) / "image"
+    n = count_by_suffix(image, ".png") if image.is_dir() else 0
+    if n == 0:
+        miss.append("output/assets/image 没有反编译贴图（执行 gameaihack art .）")
+    main = output_dir(job_dir) / "scripts" / "main.lua"
+    body = _text_len(main)
+    text = ""
+    if main.is_file():
+        try:
+            text = main.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+    if body < 400 or "function Start" not in text:
+        miss.append("scripts/main.lua 还没有实现核心玩法（至少第一关能打完）")
+    return miss
+
+
 def accept_design(job_dir: Path, snap: dict | None = None) -> list[str]:
-    """保护文件 + 交差文件。都过才算 agent 成功。"""
+    """保护文件 + 玩法说明书 + Maker 游戏。都过才算成功。"""
     bad: list[str] = []
     if snap:
         bad.extend(protected_violations(job_dir, snap))
     bad.extend(missing_design(job_dir))
+    bad.extend(missing_maker_game(job_dir))
     return bad

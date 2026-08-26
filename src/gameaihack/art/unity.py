@@ -1,4 +1,4 @@
-"""从 Unity bundle / unity3d / asset 抽出 Texture2D / Sprite PNG 到 output/美术。"""
+"""反编译 Unity 贴图/音频，写进 TapTap Maker 的 output/assets/。"""
 
 from __future__ import annotations
 
@@ -36,20 +36,47 @@ def _py310() -> str | None:
 
 
 def ensure_game_art(job_dir: Path, *, progress=None) -> int:
-    from gameaihack.core.layout import art_dir, unpack_dir
+    """从 raw 反编译贴图/音到 output/assets/，供 Maker 做同一套玩法。"""
+    from gameaihack.core.layout import art_dir, assets_dir, unpack_dir
 
     merged = unpack_dir(job_dir) / "merged"
     if not merged.is_dir():
         return 0
-    n = rip_unity_art(merged, art_dir(job_dir), progress=progress)
+    dest = assets_dir(job_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    (dest / "image").mkdir(parents=True, exist_ok=True)
+    (dest / "audio").mkdir(parents=True, exist_ok=True)
+    n = rip_unity_art(merged, dest, progress=progress)
     from gameaihack.art.manifest import write_manifest
 
+    write_manifest(dest)
+    _mirror_to_art(dest / "image", art_dir(job_dir))
     write_manifest(art_dir(job_dir))
     return n
 
 
+def _mirror_to_art(image: Path, art: Path) -> None:
+    """美术/ 与 assets/image 同一批 PNG，策划图鉴还能引用。"""
+    from gameaihack.core.fs import link_or_copy
+
+    if not image.is_dir():
+        return
+    art.mkdir(parents=True, exist_ok=True)
+    for p in image.rglob("*"):
+        if not p.is_file() or p.name.startswith("."):
+            continue
+        rel = p.relative_to(image)
+        out = art / rel
+        if out.exists():
+            continue
+        try:
+            link_or_copy(p, out)
+        except OSError:
+            continue
+
+
 def rip_unity_art(merged: Path, dest: Path, *, progress=None) -> int:
-    """抽出贴图到 dest。当前解释器没有 UnityPy 时改调 python3.10。"""
+    """抽出到 dest（Maker 的 assets/）。当前解释器没有 UnityPy 时改调 python3.10。"""
     dest.mkdir(parents=True, exist_ok=True)
     try:
         import UnityPy  # noqa: F401
@@ -149,25 +176,23 @@ def _save_png(img, path: Path) -> None:
 def _bucket_for(src: Path, container: str = "", asset: str = "") -> str:
     from gameaihack.art.classify import classify_file
 
-    return classify_file(src, container, asset) or "其他"
+    return classify_file(src, container, asset)
 
 
 def _priority(src: Path) -> int:
     n = src.name.lower()
     if SKIP_FILE.search(n):
         return 99
-    if "mannequin" in n or "avatar" in n:
+    if any(k in n for k in ("offer", "gacha", "iap", "season", "clan", "guild", "shop")):
+        return 90
+    if any(k in n for k in ("level", "block", "sprite", "sling", "bird", "pig", "world")):
         return 0
-    if "window" in n or "offer" in n:
+    if "ui" in n or "hud" in n:
         return 1
-    if "reward" in n or "season" in n or "clan" in n:
+    if n.startswith("propbundle") or "scene" in n:
         return 2
-    if n.startswith("propbundle"):
-        return 3
-    if "costume" in n:
-        return 8
     if n in {"data.unity3d", "datapack.unity3d"}:
-        return 9
+        return 3
     return 5
 
 
@@ -246,7 +271,7 @@ def _out_from_container(dest: Path, bucket: str, container: str, fallback: str) 
         parts = [fallback]
     stem = Path(parts[-1]).stem
     sub = [_safe(p, 40) for p in parts[:-1]] + [_safe(stem) + ".png"]
-    return dest / bucket / Path(*sub)
+    return dest / "image" / bucket / Path(*sub)
 
 
 def _rip(merged: Path, dest: Path, progress=None) -> int:
@@ -327,7 +352,7 @@ def _rip(merged: Path, dest: Path, progress=None) -> int:
     extra = _copy_loose_media(merged, dest, emit)
     n += extra
     if extra:
-        emit(f"[art] 散文件 {extra}  → 原始/")
+        emit(f"[art] 散文件 {extra}  → assets/")
 
     print(f"COUNT={n}", flush=True)
     return n
@@ -358,7 +383,10 @@ def _copy_loose_media(merged: Path, dest: Path, emit) -> int:
             except (OSError, ValueError):
                 continue
             parts = [_safe(x, 40) for x in rel.parts]
-            out = dest / "原始" / Path(*parts)
+            suf = p.suffix.lower()
+            kind = "audio" if suf in {".ogg", ".mp3", ".wav"} else "image"
+            bucket = "loose" if kind == "image" else ""
+            out = dest / kind / Path(*(( [bucket] if bucket else [] ) + parts))
             if out.exists():
                 continue
             try:
@@ -423,11 +451,13 @@ def _rip_container(
             if drop_asset(name):
                 continue
             bucket = _bucket_for(src, container or "", name)
+            if not bucket:
+                continue
             top = bucket.split("/", 1)[0]
             if container:
                 out = _out_from_container(dest, bucket, container, name)
             else:
-                out = dest / bucket / f"{_safe(name)}.png"
+                out = dest / "image" / (bucket or "sprites") / f"{_safe(name)}.png"
             key = str(out.relative_to(dest)).lower()
             claimed = None
             with lock:

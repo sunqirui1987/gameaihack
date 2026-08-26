@@ -1,7 +1,7 @@
 """jobs/<包名>/raw 与 output/ 的路径约定。
 
 raw/     解包与中间产物，给模型读，不外发。
-output/  最终成品：策划 + 抽出的美术。
+output/  成品：提取出的策划+美术，以及用 Maker 做成的新游戏。
 """
 
 from __future__ import annotations
@@ -87,6 +87,8 @@ def reset_output(job_dir: Path, *, keep: tuple[str, ...] | None = None) -> Path:
         shutil.rmtree(design, ignore_errors=True)
     design.mkdir(parents=True, exist_ok=True)
     (out / "美术").mkdir(parents=True, exist_ok=True)
+    (out / "assets" / "image").mkdir(parents=True, exist_ok=True)
+    (out / "assets" / "audio").mkdir(parents=True, exist_ok=True)
     return out
 
 
@@ -118,3 +120,8 @@ def design_dir(job_dir: Path) -> Path:
 
 def art_dir(job_dir: Path) -> Path:
     return output_dir(job_dir) / "美术"
+
+
+def assets_dir(job_dir: Path) -> Path:
+    """TapTap Maker 资源根：output/assets/。反编译贴图和音写到这里。"""
+    return output_dir(job_dir) / "assets"

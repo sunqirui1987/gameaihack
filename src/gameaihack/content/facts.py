@@ -104,7 +104,7 @@ def _job_index_md(job_dir: Path, ir: dict) -> str:
     ext = "\n".join(extract_lines) or "| — | 0 |"
     return f"""# 清单 · {pkg}
 
-本目录是这个包的**总清单**。做新游戏先读这一份，再进 `output/策划/` 和 `output/美术/`。
+本目录是这个包的**总清单**。先提取策划和美术，再用 Maker 做成玩法一模一样的新游戏。
 
 | | |
 |---|---|
@@ -120,10 +120,11 @@ def _job_index_md(job_dir: Path, ir: dict) -> str:
 |---|---|
 | [raw/](raw/) | 解包，只读 |
 | [raw/清单/](raw/清单/) | raw 事实（表、关卡、引擎） |
-| [output/美术/](output/美术/) | 抽出的对照图 |
-| [output/美术/清单/](output/美术/清单/) | 美术总览 / 程序 / 美术 / 全部.csv |
-| [output/策划/](output/策划/) | 制作说明书（按本清单写） |
-| [output/策划/_事实源.md](output/策划/_事实源.md) | 策划必须遵守的合成事实源 |
+| [output/assets/](output/assets/) | 提取出的美术（Maker 用） |
+| [output/美术/](output/美术/) | 与 assets/image 同一批图 |
+| [output/策划/](output/策划/) | 提取出的玩法 |
+| [output/scripts/](output/scripts/) | 新游戏 |
+| [output/策划/_事实源.md](output/策划/_事实源.md) | 事实源，不准改 |
 | [run.log](run.log) | 运行日志 |
 
 本文件夹里还有：[raw.md](清单/raw.md) · [美术.md](清单/美术.md) · [程序.md](清单/程序.md) · [事实源.md](清单/事实源.md) · [美术全部.csv](清单/美术全部.csv)
@@ -144,13 +145,12 @@ def _job_index_md(job_dir: Path, ir: dict) -> str:
 
 {des}
 
-## 怎么做新游戏
+## 怎么做成新游戏
 
-1. 读本清单和 [output/策划/_事实源.md](output/策划/_事实源.md)
-2. 按 [output/策划/制作顺序.md](output/策划/制作顺序.md) 开工
-3. 用 [output/策划/02-核心玩法.md](output/策划/02-核心玩法.md) 做第一局
-4. 美术只对照 [output/美术/](output/美术/)；上架图生成到 [output/assets/image/](output/assets/image/)
-5. 不要重打包原 APK
+1. 读 [output/策划/02-核心玩法.md](output/策划/02-核心玩法.md)（提取出的玩法）
+2. 贴图在 [output/assets/image/](output/assets/image/)（提取出的美术）
+3. 把同一套玩法写进 [output/scripts/main.lua](output/scripts/main.lua)
+4. 不要重打包原 APK。角色名、Logo 换成自己的
 """
 
 

@@ -9,8 +9,8 @@ from __future__ import annotations
 import os
 
 from .dsh import DshDriver
+from .sdk import SdkDriver
 from .types import AgentError
-from gameaihack.agent.sdk import SdkDriver
 
 DRIVERS = ("sdk", "grok", "codex", "dsh")
 

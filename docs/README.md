@@ -1,15 +1,13 @@
-# 文档怎么读
+# 文档
 
-按你的角色选，不要从上到下全读。
+产品一句话：**提取游戏的策划和美术，再用 TapTap Maker 做成玩法一模一样的新游戏。**
 
-| 角色 | 读什么 |
+任务文案只在 `src/gameaihack/agent/prompts/mission.py`，AGENTS.md / Persona / DRIVE / 工程 README 都从那里出。
+
+| 你要 | 读 |
 |---|---|
-| 要把工具交给别人、或要把结果交给别人 | [产品说明书](产品说明书.md) |
-| 自己跑一次 | [使用指南](使用指南.md) |
-| 对结果不满意、想知道是能力问题还是输入残缺 | [完整度矩阵](完整度矩阵.md) |
-| 对接 HTML / zip / JSON | [输出物规格](输出物规格.md) |
-| 写代码 | [开发文档](开发文档.md) · [实现规格](impl/实现规格.md) · [ir-schema](ir-schema.md) · [tooling](tooling.md) |
-
-解剖包发给接收者时，用 [templates/交付包README.md](templates/交付包README.md) 渲染，不要让接收者来本仓库翻开发文档。
-
-对照编码：[impl/实现规格.md](impl/实现规格.md)。
+| 产品是什么 | [产品说明书](产品说明书.md) |
+| 安装：`analyze` / `build` | [使用指南](使用指南.md) |
+| `jobs/` 和 `output/` 里有什么 | [产出规格](产出规格.md) |
+| `analyze` 跑哪些步 | [流水线](流水线.md) |
+| 改代码 | [开发](开发.md) |

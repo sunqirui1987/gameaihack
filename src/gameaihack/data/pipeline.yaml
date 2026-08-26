@@ -1,5 +1,4 @@
-# 管线开关。实现后由 CLI --config 读取。
-# 详见 docs/开发文档.md
+# 管线开关。CLI --config 可改配置目录。说明见 docs/流水线.md。
 
 job:
   keep_raw: true

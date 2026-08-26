@@ -114,12 +114,12 @@ class GrokDriver:
         return path
 
     def run(self, req: AgentRequest, *, cfg=None) -> dict:
-        from gameaihack.agent.harness import cli_home, inject_cli_env, prepare_grok_home
+        from gameaihack.agent.drivers.harness import cli_home, inject_cli_env, prepare_grok_home
         from gameaihack.core.progress import log, stream
 
         binary = self.binary if self.popen is not None else self.require(cfg)
         job_dir = req.job_dir.resolve()
-        cwd = job_dir
+        cwd = Path(req.cwd).resolve() if req.cwd else job_dir
         isolate_job_workspace(cwd)
         model = req.model or (cfg.model if cfg else "")
         env = None

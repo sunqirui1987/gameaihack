@@ -44,10 +44,11 @@ class Job:
             "raw/extract/raw",
             "raw/extract/normalized",
             "raw/ir",
-            "raw/deliverable",
             "output/策划",
             "output/美术",
-            "output/data",
+            "output/assets/image",
+            "output/assets/audio",
+            "output/scripts",
         ):
             (self.dir / sub).mkdir(parents=True, exist_ok=True)
 

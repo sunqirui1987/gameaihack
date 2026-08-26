@@ -21,6 +21,7 @@ class AgentRequest:
     on_line: Callable[[str], None] | None = None
     api_key: str = ""
     base_url: str = ""
+    cwd: Path | None = None  # 默认 job；需要时切到 output/
 
 
 def split_messages(messages: list[dict]) -> tuple[str, str]:

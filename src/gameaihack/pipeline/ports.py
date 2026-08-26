@@ -2,8 +2,9 @@
 
 复刻路径（主契约）：
 
-    包 → 解开 raw/ → 抽出 output/美术 → agent（sdk / grok / codex / dsh）读 raw+美术写出 output/策划
-        → 封口 复刻说明.md（策划与美术怎么对照着重做）
+    包 → 机器解开 raw/
+        → agent 反编译玩法，写进 TapTap Maker 工程 output/
+           （assets/ 资源 + 策划/ 玩法 + scripts/ 能玩的游戏）
 """
 
 from __future__ import annotations
@@ -83,6 +84,12 @@ class JobPaths:
 
         return art_dir(self.root)
 
+    @property
+    def assets(self) -> Path:
+        from gameaihack.core.layout import assets_dir
+
+        return assets_dir(self.root)
+
 
 @runtime_checkable
 class Inspector(Protocol):
@@ -137,27 +144,24 @@ class LevelIndexer(Protocol):
 @runtime_checkable
 class ArtRipper(Protocol):
     def rip(self, job_dir: Path, progress=None) -> int:
-        """游戏贴图 → output/美术。返回张数。"""
+        """提取美术 → output/assets/。返回文件数。"""
 
 
 @runtime_checkable
 class DesignAgent(Protocol):
-    """读 raw + 美术，写 output/策划。默认 DeepSeek Harness SDK。"""
+    """提取策划 PRD，并在 Maker 里做成同一套游戏。"""
 
     def require(self, via: str = "sdk") -> Any:
         """检查 agent / 模型密钥。没有就抛。"""
 
     def analyze(self, job_dir: Path, ir: dict, cfg: Any | None = None, via: str = "sdk") -> dict:
-        """跑 agent。返回 {agent, ok, files}。交差线：核心章 + 图鉴篇。"""
+        """跑 agent。交差：PRD + assets + scripts/main.lua。"""
 
 
 @runtime_checkable
 class Publisher(Protocol):
-    def render(self, job_dir: Path, ir: dict, *, thumbs_only: bool, overwrite_design: bool) -> None:
-        """写 output 骨架或收口（美术清单、data）。overwrite_design=False 时不覆盖 agent 策划正文，但会重写人话关卡表。"""
-
     def harvest(self, job_dir: Path) -> int:
         """把散落的策划收口到 output/策划。"""
 
     def seal(self, job_dir: Path, ir: dict) -> dict:
-        """封口复刻包：复刻说明 + 完整度。不覆盖策划正文。"""
+        """封口：完整度 + Maker init。不覆盖策划正文和已有 Lua。"""

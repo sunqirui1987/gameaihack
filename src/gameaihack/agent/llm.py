@@ -110,8 +110,6 @@ def llm_enabled(cli_flag: bool | None = None) -> bool:
         return False
     if os.environ.get("GAMEAIHACK_LLM", "").strip().lower() in {"0", "false", "no", "off"}:
         return False
-    if os.environ.get("PYTEST_CURRENT_TEST") and os.environ.get("GAMEAIHACK_LLM", "").strip() not in {"1", "true", "yes"}:
-        return False
     if cli_flag is True:
         return resolve_llm() is not None
     try:
